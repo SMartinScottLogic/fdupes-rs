@@ -1,0 +1,10 @@
+[package]
+name = "fdupes"
+version = "0.1.0"
+authors = ["SMartinScottLogic <smartin@scottlogic.com>"]
+edition = "2018"
+
+[dependencies]
+log = "^0.3"
+env_logger = "^0.3"
+walkdir = "2"
