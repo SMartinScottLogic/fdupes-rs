@@ -8,11 +8,19 @@ use std::collections::BTreeMap;
 
 fn main() {
     env_logger::init().unwrap();
+    // TODO cmd-line args
 
     let sourceroot = env::args_os().nth(1).unwrap();
 
-    let mut i: BTreeMap<u64, Vec<String> > = WalkDir::new(sourceroot)
-        .into_iter()
+    let recursive = true;
+
+    let walk = WalkDir::new(sourceroot);
+    let walk = match recursive {
+        true => walk.into_iter(),
+        false => walk.max_depth(1).into_iter()
+    };
+
+    let mut i: BTreeMap<u64, Vec<String> > = walk
         .map(|entry| entry.unwrap())
         .filter(|entry| entry.path().is_file())
         .map(|entry| (entry.metadata().unwrap().len(), entry.path().to_str().unwrap().to_string()))
@@ -23,6 +31,5 @@ fn main() {
     for bucket in i.iter().rev() {
       debug!("{:#?}", bucket);
     }
-    debug!("{:#?}", i);
 }
 
