@@ -31,7 +31,7 @@ fn main() {
     // Remove files with unique size
     let groups: BTreeMap<u64, Vec<String> > = groups.into_iter().filter(|(_, value)| value.len() > 1).collect();
 
-    for bucket in i.iter().rev() {
+    for bucket in groups.iter().rev() {
       debug!("{:#?}", bucket);
     }
 }
