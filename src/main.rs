@@ -20,7 +20,7 @@ fn main() {
         false => walk.max_depth(1).into_iter()
     };
 
-    let mut i: BTreeMap<u64, Vec<String> > = walk
+    let groups: BTreeMap<u64, Vec<String> > = walk
         .map(|entry| entry.unwrap())
         .filter(|entry| entry.path().is_file())
         .map(|entry| (entry.metadata().unwrap().len(), entry.path().to_str().unwrap().to_string()))
@@ -28,6 +28,9 @@ fn main() {
             acc.entry(entry.0).or_insert(Vec::new()).push(entry.1);
             acc
         });
+    // Remove files with unique size
+    let groups: BTreeMap<u64, Vec<String> > = groups.into_iter().filter(|(_, value)| value.len() > 1).collect();
+
     for bucket in i.iter().rev() {
       debug!("{:#?}", bucket);
     }
