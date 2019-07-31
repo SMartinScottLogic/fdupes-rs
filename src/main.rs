@@ -31,8 +31,12 @@ fn gen_partial_crcs<K: std::cmp::Ord, V>(groups: BTreeMap<K, Vec<V>>) -> BTreeMa
     groups
 }
 
-fn gen_full_crcs<K: std::cmp::Ord, V>(groups: BTreeMap<K, Vec<V>>) -> BTreeMap<K, Vec<V>> {
-    groups
+fn gen_full_crcs<K: std::cmp::Ord, V>(groups: BTreeMap<K, Vec<V>>) -> BTreeMap<(K, u64), Vec<V>> {
+    groups.into_iter().flat_map(|(size, group)| {
+        let mut new_groups = BTreeMap::new();
+        new_groups.insert((size, 0), group);
+        new_groups
+    }).collect()
 }
 
 fn byte_match<K: std::cmp::Ord, V>(groups: BTreeMap<K, Vec<V>>) -> BTreeMap<K, Vec<V>> {
