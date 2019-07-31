@@ -5,6 +5,10 @@ extern crate env_logger;
 use std::env;
 use walkdir::WalkDir;
 use std::collections::BTreeMap;
+use crc::crc16;
+use std::io;
+use std::io::prelude::*;
+use std::fs::File;
 
 fn find_files(sourceroot: std::ffi::OsString, recursive: bool) -> BTreeMap<u64, Vec<String>> {
     let walk = WalkDir::new(sourceroot);
@@ -23,23 +27,51 @@ fn find_files(sourceroot: std::ffi::OsString, recursive: bool) -> BTreeMap<u64, 
         })
 }
 
-fn remove_uniq<K: std::cmp::Ord, V>(groups: BTreeMap<K, Vec<V>>) -> BTreeMap<K, Vec<V>> {
+fn remove_uniq<K: std::cmp::Ord>(groups: BTreeMap<K, Vec<String>>) -> BTreeMap<K, Vec<String>> {
     groups.into_iter().filter(|(_, value)| value.len() > 1).collect()
 }
 
-fn gen_partial_crcs<K: std::cmp::Ord, V>(groups: BTreeMap<K, Vec<V>>) -> BTreeMap<K, Vec<V>> {
-    groups
+fn gen_partial_crc(filename:&str) -> u16 {
+    let mut f = File::open(filename).unwrap();
+    let mut buffer = [0; 1024];
+
+    // read up to 10 bytes
+    f.read(&mut buffer).unwrap();
+    crc16::checksum_usb(&buffer)
 }
 
-fn gen_full_crcs<K: std::cmp::Ord, V>(groups: BTreeMap<K, Vec<V>>) -> BTreeMap<(K, u64), Vec<V>> {
+fn gen_partial_crcs(groups: BTreeMap<u64, Vec<String>>) -> BTreeMap<(u64, u64), Vec<String>> {
     groups.into_iter().flat_map(|(size, group)| {
-        let mut new_groups = BTreeMap::new();
-        new_groups.insert((size, 0), group);
-        new_groups
+        group.into_iter().fold(BTreeMap::new(), |mut acc, entry| {
+            let crc: u16 = gen_partial_crc(&entry);
+            acc.entry((size, crc as u64)).or_insert(Vec::new()).push(entry);
+            acc
+        })
     }).collect()
 }
 
-fn byte_match<K: std::cmp::Ord, V>(groups: BTreeMap<K, Vec<V>>) -> BTreeMap<K, Vec<V>> {
+fn gen_full_crc(filename:&str) -> u16 {
+    let mut f = File::open(filename).unwrap();
+    let mut buffer = Vec::new();
+    // read the whole file
+    f.read_to_end(&mut buffer);
+
+    //debug!("{:#?}", buffer);
+
+    crc16::checksum_usb(&buffer)
+}
+
+fn gen_full_crcs(groups: BTreeMap<(u64, u64), Vec<String>>) -> BTreeMap<(u64, u64), Vec<String>> {
+    groups.into_iter().flat_map(|(key, group)| {
+        group.into_iter().fold(BTreeMap::new(), |mut acc, entry| {
+            let crc: u16 = gen_full_crc(&entry);
+            acc.entry((key.0, crc as u64)).or_insert(Vec::new()).push(entry);
+            acc
+        })
+    }).collect()
+}
+
+fn byte_match<K: std::cmp::Ord>(groups: BTreeMap<K, Vec<String>>) -> BTreeMap<K, Vec<String>> {
     groups
 }
 
