@@ -5,8 +5,9 @@ extern crate env_logger;
 use std::env;
 use walkdir::WalkDir;
 use std::collections::BTreeMap;
-use crc::crc16;
+use crc::{crc16, Hasher16};
 use std::io;
+use std::io::BufReader;
 use std::io::prelude::*;
 use std::fs::File;
 
@@ -53,19 +54,23 @@ fn gen_partial_crcs(groups: BTreeMap<u64, Vec<String>>) -> BTreeMap<(u64, u64), 
 }
 
 fn gen_full_crc(filename:&str) -> io::Result<(String, u16)> {
-    let mut f = File::open(filename).unwrap();
-    let mut buffer = Vec::new();
-    // read the whole file
-    /* TODO: Switch to buffer flow:
+    let file = File::open(filename)?;
+    let mut reader = BufReader::new(file);
     let mut digest = crc16::Digest::new(crc16::X25);
-    while(!EOF) {
-    digest.write(f.read(&mut buffer));
-    }
-    assert_eq!(digest.sum16(), 0x906e);
-    */
 
-    f.read_to_end(&mut buffer)?;
-    Ok((filename.to_string(), crc16::checksum_usb(&buffer)))
+    loop {
+        let length = {
+            let buffer = reader.fill_buf()?;
+            digest.write(&buffer);
+            buffer.len()
+        };
+        if length == 0 {
+            break;
+        }
+        reader.consume(length);
+    }
+
+    Ok((filename.to_string(), digest.sum16()))
 }
 
 fn gen_full_crcs(groups: BTreeMap<(u64, u64), Vec<String>>) -> BTreeMap<(u64, u64), Vec<String>> {
