@@ -6,6 +6,7 @@ use std::env;
 use walkdir::WalkDir;
 use std::collections::BTreeMap;
 use crc::crc16;
+use std::io;
 use std::io::prelude::*;
 use std::fs::File;
 
@@ -30,7 +31,7 @@ fn remove_uniq<K: std::cmp::Ord>(groups: BTreeMap<K, Vec<String>>) -> BTreeMap<K
     groups.into_iter().filter(|(_, value)| value.len() > 1).collect()
 }
 
-fn gen_partial_crc(filename:&str) -> Result<(String, u16), std::io::Error> {
+fn gen_partial_crc(filename:&str) -> io::Result<(String, u16)> {
     let mut f = File::open(filename).unwrap();
     let mut buffer = [0; 1024];
 
@@ -51,7 +52,7 @@ fn gen_partial_crcs(groups: BTreeMap<u64, Vec<String>>) -> BTreeMap<(u64, u64), 
     }).collect()
 }
 
-fn gen_full_crc(filename:&str) -> Result<(String, u16), std::io::Error> {
+fn gen_full_crc(filename:&str) -> io::Result<(String, u16)> {
     let mut f = File::open(filename).unwrap();
     let mut buffer = Vec::new();
     // read the whole file
