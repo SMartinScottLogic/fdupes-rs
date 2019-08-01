@@ -56,6 +56,14 @@ fn gen_full_crc(filename:&str) -> io::Result<(String, u16)> {
     let mut f = File::open(filename).unwrap();
     let mut buffer = Vec::new();
     // read the whole file
+    /* TODO: Switch to buffer flow:
+    let mut digest = crc16::Digest::new(crc16::X25);
+    while(!EOF) {
+    digest.write(f.read(&mut buffer));
+    }
+    assert_eq!(digest.sum16(), 0x906e);
+    */
+
     f.read_to_end(&mut buffer)?;
     Ok((filename.to_string(), crc16::checksum_usb(&buffer)))
 }
