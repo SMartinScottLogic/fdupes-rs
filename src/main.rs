@@ -10,6 +10,9 @@ use std::io;
 use std::io::BufReader;
 use std::io::prelude::*;
 use std::fs::File;
+use std::io::SeekFrom;
+
+const BLOCK_SIZE: usize = 1024;
 
 fn find_files(sourceroot: std::ffi::OsString, recursive: bool) -> BTreeMap<u64, Vec<String>> {
     let walk = WalkDir::new(sourceroot);
@@ -34,9 +37,8 @@ fn remove_uniq<K: std::cmp::Ord>(groups: BTreeMap<K, Vec<String>>) -> BTreeMap<K
 
 fn gen_partial_crc(filename:&str) -> io::Result<(String, u16)> {
     let mut f = File::open(filename).unwrap();
-    let mut buffer = [0; 1024];
+    let mut buffer = [0; BLOCK_SIZE];
 
-    // read up to 10 bytes
     f.read(&mut buffer)?;
     Ok((filename.to_string(), crc16::checksum_usb(&buffer)))
 }
@@ -85,8 +87,49 @@ fn gen_full_crcs(groups: BTreeMap<(u64, u64), Vec<String>>) -> BTreeMap<(u64, u6
     }).collect()
 }
 
-fn byte_match<K: std::cmp::Ord>(groups: BTreeMap<K, Vec<String>>) -> BTreeMap<K, Vec<String>> {
-    groups
+fn open_files(size: u64, group: Vec<String>) -> BTreeMap<u64, Vec<(String, std::fs::File)>> {
+    group.into_iter()
+    .fold(BTreeMap::new(), |mut acc, filename| {
+        let nom = filename.clone();
+        match File::open(filename) {
+            Ok(file) => acc.entry(size).or_insert(Vec::new()).push((nom, file)),
+            Err(_) => {}
+        }
+        acc
+    })
+}
+
+fn read_file_block(file: &mut std::fs::File, block_start: usize) -> io::Result<(usize, [u8; BLOCK_SIZE])> {
+        file.seek(SeekFrom::Start(block_start as u64))?;
+        let mut buffer = [0; BLOCK_SIZE];
+        let read = file.read(&mut buffer)?;
+        Ok((read, buffer))
+}
+
+fn read_block(size: u64, group: Vec<(String, std::fs::File)>, block_start: usize) -> BTreeMap<u64, Vec<(String, std::fs::File, usize, [u8; BLOCK_SIZE])>> {
+    group.into_iter()
+    .fold(BTreeMap::new(), |mut acc, (filename, mut file)| {
+        match read_file_block(&mut file, block_start) {
+            Ok((read, buffer)) => acc.entry(size).or_insert(Vec::new()).push((filename, file, read, buffer)),
+            Err(_) => {}
+        };
+        acc
+    })
+}
+
+fn partition_group_by_bytes(size: u64, group: Vec<String>) -> BTreeMap<(u64, u64), Vec<String>> {
+    group.into_iter()
+    .fold(BTreeMap::new(), |mut acc, filename| {
+        let group: u64 = 0;
+        acc.entry((size, group)).or_insert(Vec::new()).push(filename);
+        acc
+    })
+}
+
+fn byte_match(groups: BTreeMap<(u64, u64), Vec<String>>) -> BTreeMap<(u64, u64), Vec<String>> {
+    groups.into_iter().flat_map(|((size, _), group)| {
+        partition_group_by_bytes(size, group)
+    }).collect()
 }
 
 fn main() {
