@@ -142,15 +142,17 @@ fn main() {
     let groups = find_files(sourceroot, recursive);
     // Remove files with unique size
     let groups = remove_uniq(groups);
-    // Get starting CRC
-    let groups = gen_partial_crcs(groups);
+
     // Remove files with unique partial crc
+    let groups = gen_partial_crcs(groups);
     let groups = remove_uniq(groups);
-    let groups = gen_full_crcs(groups);
+
     // Remove files with unique full crc
+    let groups = gen_full_crcs(groups);
     let groups = remove_uniq(groups);
-    let groups = byte_match(groups);
+
     // Remove files with unique bytes
+    let groups = byte_match(groups);
     let groups = remove_uniq(groups);
 
     for bucket in groups.iter().rev() {
