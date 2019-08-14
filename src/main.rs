@@ -14,7 +14,13 @@ use std::io::SeekFrom;
 
 const BLOCK_SIZE: usize = 1024;
 
-fn find_files(sourceroot: std::ffi::OsString, recursive: bool) -> Vec<Vec<String>> {
+#[derive(Clone, Debug)]
+struct FdupesFile {
+    filename: String,
+    size: u64
+}
+
+fn find_files(sourceroot: std::ffi::OsString, recursive: bool) -> Vec<Vec<FdupesFile>> {
     info!("find all files in {:?} (recursive: {})", sourceroot, recursive);
 
     let walk = WalkDir::new(sourceroot);
@@ -28,27 +34,27 @@ fn find_files(sourceroot: std::ffi::OsString, recursive: bool) -> Vec<Vec<String
         .filter(|entry| entry.path().is_file())
         .map(|entry| (entry.metadata().unwrap().len(), entry.path().to_str().unwrap().to_string()))
         .fold(BTreeMap::new(), |mut acc, entry| {
-            acc.entry(entry.0).or_insert(Vec::new()).push(entry.1);
+            acc.entry(entry.0).or_insert(Vec::new()).push(FdupesFile {filename: entry.1, size: entry.0});
             acc
         }).values().cloned().collect()
 }
 
-fn remove_uniq(groups: Vec<Vec<String>>) -> Vec<Vec<String>> {
+fn remove_uniq(groups: Vec<Vec<FdupesFile>>) -> Vec<Vec<FdupesFile>> {
     groups.into_iter().filter(|value| value.len() > 1).collect()
 }
 
-fn gen_partial_crc(filename:&str) -> io::Result<(String, u16)> {
-    let mut f = File::open(filename).unwrap();
+fn gen_partial_crc(file:FdupesFile) -> io::Result<(FdupesFile, u16)> {
+    let mut f = File::open(&file.filename).unwrap();
     let mut buffer = [0; BLOCK_SIZE];
 
     f.read(&mut buffer)?;
-    Ok((filename.to_string(), crc16::checksum_usb(&buffer)))
+    Ok((file, crc16::checksum_usb(&buffer)))
 }
 
-fn gen_partial_crcs(groups: Vec<Vec<String>>) -> Vec<Vec<String>> {
+fn gen_partial_crcs(groups: Vec<Vec<FdupesFile>>) -> Vec<Vec<FdupesFile>> {
     groups.into_iter().flat_map(|group| {
         group.into_iter()
-        .map(|filename| gen_partial_crc(&filename))
+        .map(|file| gen_partial_crc(file))
         .filter_map(Result::ok)
         .fold(BTreeMap::new(), |mut acc, (filename, crc)| {
             acc.entry(crc as u64).or_insert(Vec::new()).push(filename);
@@ -57,9 +63,9 @@ fn gen_partial_crcs(groups: Vec<Vec<String>>) -> Vec<Vec<String>> {
     }).map(|(_, group)| group).collect()
 }
 
-fn gen_full_crc(filename:&str) -> io::Result<(String, u16)> {
-    let file = File::open(filename)?;
-    let mut reader = BufReader::new(file);
+fn gen_full_crc(file:FdupesFile) -> io::Result<(FdupesFile, u16)> {
+    let f = File::open(&file.filename)?;
+    let mut reader = BufReader::new(f);
     let mut digest = crc16::Digest::new(crc16::X25);
 
     loop {
@@ -74,16 +80,16 @@ fn gen_full_crc(filename:&str) -> io::Result<(String, u16)> {
         reader.consume(length);
     }
 
-    Ok((filename.to_string(), digest.sum16()))
+    Ok((file, digest.sum16()))
 }
 
-fn gen_full_crcs(groups: Vec<Vec<String>>) -> Vec<Vec<String>> {
+fn gen_full_crcs(groups: Vec<Vec<FdupesFile>>) -> Vec<Vec<FdupesFile>> {
     groups.into_iter().flat_map(|group| {
         group.into_iter()
-        .map(|filename| gen_full_crc(&filename))
+        .map(|file| gen_full_crc(file))
         .filter_map(Result::ok)
-        .fold(BTreeMap::new(), |mut acc, (filename, crc)| {
-            acc.entry(crc as u64).or_insert(Vec::new()).push(filename);
+        .fold(BTreeMap::new(), |mut acc, (file, crc)| {
+            acc.entry(crc as u64).or_insert(Vec::new()).push(file);
             acc
         })
     }).map(|(_, group)| group).collect()
@@ -119,16 +125,16 @@ fn read_block(size: u64, group: Vec<(String, std::fs::File)>, block_start: usize
     })
 }
 
-fn partition_group_by_bytes(group: Vec<String>) -> Vec<Vec<String>> {
+fn partition_group_by_bytes(group: Vec<FdupesFile>) -> Vec<Vec<FdupesFile>> {
     group.into_iter()
-    .fold(BTreeMap::new(), |mut acc, filename| {
+    .fold(BTreeMap::new(), |mut acc, file| {
         let group: u64 = 0;
-        acc.entry(group).or_insert(Vec::new()).push(filename);
+        acc.entry(group).or_insert(Vec::new()).push(file);
         acc
     }).into_iter().map(|(_, group)| group).collect()
 }
 
-fn byte_match(groups: Vec<Vec<String>>) -> Vec<Vec<String>> {
+fn byte_match(groups: Vec<Vec<FdupesFile>>) -> Vec<Vec<FdupesFile>> {
     groups.into_iter().flat_map(|group| {
         partition_group_by_bytes(group)
     }).collect()
