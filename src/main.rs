@@ -186,7 +186,13 @@ fn main() {
     let groups = remove_uniq(groups);
     info!("{} non-unique groups (by exact content)", groups.len());
 
-    for bucket in groups.iter().rev() {
+    let groups = {
+        let mut ngroups = groups.clone();
+        ngroups.sort_unstable_by(|b, a| a.get(0).map(|f| f.size + 1).unwrap_or(0).cmp(&b.get(0).map(|f| f.size + 1).unwrap_or(0)));
+        ngroups
+    };
+
+    for bucket in groups.iter() {
       debug!("{:#?}", bucket);
     }
 }
