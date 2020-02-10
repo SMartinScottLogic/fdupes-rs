@@ -20,8 +20,8 @@ struct FdupesFile {
     size: u64
 }
 
-fn find_files(sourceroot: std::ffi::OsString, recursive: bool) -> Vec<Vec<FdupesFile>> {
-    info!("find all files in {:?} (recursive: {})", sourceroot, recursive);
+fn find_files(sourceroot: std::ffi::OsString, recursive: bool, skip_empty: bool) -> Vec<Vec<FdupesFile>> {
+    info!("find all files in {:?} (recursive: {}, skip_empty: {})", sourceroot, recursive, skip_empty);
 
     let walk = WalkDir::new(sourceroot);
     let walk = match recursive {
@@ -34,7 +34,10 @@ fn find_files(sourceroot: std::ffi::OsString, recursive: bool) -> Vec<Vec<Fdupes
         .filter(|entry| entry.path().is_file())
         .map(|entry| (entry.metadata().unwrap().len(), entry.path().to_str().unwrap().to_string()))
         .fold(BTreeMap::new(), |mut acc, entry| {
-            acc.entry(entry.0).or_insert(Vec::new()).push(FdupesFile {filename: entry.1, size: entry.0});
+            let size = entry.0;
+            if size > 0 || !skip_empty {
+                acc.entry(size).or_insert(Vec::new()).push(FdupesFile {filename: entry.1, size});
+            }
             acc
         }).values().cloned().collect()
 }
@@ -146,8 +149,9 @@ fn main() {
 
     let sourceroot = env::args_os().nth(1).unwrap();
     let recursive = true;
+    let skip_empty = true;
 
-    let groups = find_files(sourceroot, recursive);
+    let groups = find_files(sourceroot, recursive, skip_empty);
     // Remove files with unique size
     let groups = remove_uniq(groups);
     debug!("{} non-unique groups (by size)", groups.len());
