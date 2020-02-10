@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate log;
+extern crate chrono;
 extern crate env_logger;
 
 use std::env;
@@ -11,6 +12,9 @@ use std::io::BufReader;
 use std::io::prelude::*;
 use std::fs::File;
 use std::io::SeekFrom;
+use env_logger::{Builder,Env};
+use log::LevelFilter;
+use chrono::Local;
 
 const BLOCK_SIZE: usize = 1024;
 
@@ -144,7 +148,18 @@ fn byte_match(groups: Vec<Vec<FdupesFile>>) -> Vec<Vec<FdupesFile>> {
 }
 
 fn main() {
-    env_logger::init().unwrap();
+    let env = Env::default()
+        .filter_or("RUST_LOG", "info");
+    Builder::from_env(env)
+        .format(|buf, record| {
+            writeln!(buf,
+                "{} [{}] - {}",
+                Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                record.level(),
+                record.args()
+            )
+        })
+        .init();
     // TODO cmd-line args
 
     let sourceroot = env::args_os().nth(1).unwrap();
@@ -154,22 +169,22 @@ fn main() {
     let groups = find_files(sourceroot, recursive, skip_empty);
     // Remove files with unique size
     let groups = remove_uniq(groups);
-    debug!("{} non-unique groups (by size)", groups.len());
+    info!("{} non-unique groups (by size)", groups.len());
 
     // Remove files with unique partial crc
     let groups = gen_partial_crcs(groups);
     let groups = remove_uniq(groups);
-    debug!("{} non-unique groups (by partial crc)", groups.len());
+    info!("{} non-unique groups (by partial crc)", groups.len());
 
     // Remove files with unique full crc
     let groups = gen_full_crcs(groups);
     let groups = remove_uniq(groups);
-    debug!("{} non-unique groups (by full crc)", groups.len());
+    info!("{} non-unique groups (by full crc)", groups.len());
 
     // Remove files with unique bytes
     let groups = byte_match(groups);
     let groups = remove_uniq(groups);
-    debug!("{} non-unique groups (by exact content)", groups.len());
+    info!("{} non-unique groups (by exact content)", groups.len());
 
     for bucket in groups.iter().rev() {
       debug!("{:#?}", bucket);
