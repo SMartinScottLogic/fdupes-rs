@@ -120,11 +120,12 @@ fn read_file_block(file: &mut std::fs::File, block_start: usize) -> io::Result<(
         Ok((read, buffer))
 }
 
-fn read_block(size: u64, group: Vec<(String, std::fs::File)>, block_start: usize) -> BTreeMap<u64, Vec<(String, std::fs::File, usize, [u8; BLOCK_SIZE])>> {
+fn read_block(size: u64, group: Vec<(String, std::fs::File)>, block_start: usize) -> BTreeMap<Vec<u8>, Vec<(String, std::fs::File, usize)>> {
     group.into_iter()
     .fold(BTreeMap::new(), |mut acc, (filename, mut file)| {
         if let Ok((read, buffer)) = read_file_block(&mut file, block_start) {
-            acc.entry(size).or_insert_with(Vec::new).push((filename, file, read, buffer));
+            //acc.entry(size).or_insert_with(Vec::new).push((filename, file, read, buffer));
+            acc.entry(buffer[..read].to_vec()).or_insert_with(Vec::new).push((filename, file, read + block_start));
         }
         acc
     })
@@ -185,7 +186,7 @@ fn main() {
     info!("{} non-unique groups (by exact content)", groups.len());
 
     let mut groups = groups;
-    groups.sort_unstable_by(|b, a| a.get(0).map(|f| f.size + 1).unwrap_or(0).cmp(&b.get(0).map(|f| f.size + 1).unwrap_or(0)));
+    groups.sort_unstable_by(|a, b| a.get(0).map(|f| f.size + 1).unwrap_or(0).cmp(&b.get(0).map(|f| f.size + 1).unwrap_or(0)).reverse());
 
     for bucket in groups.iter() {
       debug!("{:#?}", bucket);
