@@ -20,6 +20,38 @@ mod data {
 
     const BLOCK_SIZE: usize = 1024;
 
+    #[derive(Debug)]
+    pub struct FdupesGroup {
+        pub filenames: Vec<String>,
+        size: u64,
+        partialcrc: u16,
+        fullcrc: u16
+    }
+
+    impl FdupesGroup {
+        pub fn add(&mut self, file: FdupesFile) {
+            self.filenames.push(file.filename);
+        }
+
+        pub fn len(&self) -> usize {
+            self.filenames.len()
+        }
+
+        pub fn partialcrc(&self) -> u16 {
+            self.partialcrc
+        }
+
+        pub fn fullcrc(&self) -> u16 {
+            self.fullcrc
+        }
+    }
+
+    impl From<FdupesFile> for FdupesGroup {
+        fn from(file: FdupesFile) -> Self {
+            FdupesGroup { filenames: [file.filename].to_vec(), size: file.size, partialcrc: file.partialcrc.2, fullcrc: file.fullcrc.2 }
+        }
+    }
+
     #[derive(Clone, Debug)]
     pub struct FdupesFile {
         pub filename: String,
@@ -38,7 +70,7 @@ mod data {
             }
         }
 
-        fn gen_partial_crc(filename: &str) -> io::Result<u16> {
+        fn gen_partialcrc(filename: &str) -> io::Result<u16> {
             let mut f = File::open(filename)?;
             let mut buffer = [0; BLOCK_SIZE];
 
@@ -46,7 +78,7 @@ mod data {
             Ok(crc16::checksum_usb(&buffer[..size]))
         }
 
-        fn gen_full_crc(filename: &str) -> io::Result<u16> {
+        fn gen_fullcrc(filename: &str) -> io::Result<u16> {
             let f = File::open(filename)?;
             let mut reader = BufReader::new(f);
             let mut digest = crc16::Digest::new(crc16::X25);
@@ -68,21 +100,21 @@ mod data {
 
         pub fn calculate_metrics(&mut self) {
             if !self.partialcrc.0 {
-                self.partialcrc = match Self::gen_partial_crc(&self.filename) {
+                self.partialcrc = match Self::gen_partialcrc(&self.filename) {
                     Ok(crc) => (true, true, crc),
                     _ => (true, false, 0_u16),
                 };
             }
 
             if !self.fullcrc.0 {
-                self.fullcrc = match Self::gen_full_crc(&self.filename) {
+                self.fullcrc = match Self::gen_fullcrc(&self.filename) {
                     Ok(crc) => (true, true, crc),
                     _ => (true, false, 0_u16),
                 };
             }
         }
 
-        pub fn partial_crc(&self) -> io::Result<u16> {
+        pub fn partialcrc(&self) -> io::Result<u16> {
             if self.partialcrc.1 {
                 Ok(self.partialcrc.2)
             } else {
@@ -93,7 +125,7 @@ mod data {
             }
         }
 
-        pub fn full_crc(&self) -> io::Result<u16> {
+        pub fn fullcrc(&self) -> io::Result<u16> {
             if self.fullcrc.1 {
                 Ok(self.fullcrc.2)
             } else {
@@ -105,15 +137,13 @@ mod data {
         }
     }
 
-    impl Eq for FdupesFile {}
-
-    impl PartialEq for FdupesFile {
-        fn eq(&self, other: &Self) -> bool {
-            let mut reader_a = match File::open(self.filename.clone()) {
+    impl PartialEq<FdupesGroup> for FdupesFile {
+        fn eq(&self, other: &FdupesGroup) -> bool {
+            let mut reader_a = match File::open(&self.filename) {
                 Ok(f) => BufReader::new(f),
                 _ => return false,
             };
-            let mut reader_b = match File::open(other.filename.clone()) {
+            let mut reader_b = match File::open(other.filenames.get(0).unwrap()) {
                 Ok(f) => BufReader::new(f),
                 _ => return false,
             };
@@ -147,7 +177,7 @@ fn find_files(
     sourceroot: std::ffi::OsString,
     recursive: bool,
     skip_empty: bool,
-) -> Vec<Vec<data::FdupesFile>> {
+) -> BTreeMap<u64, Vec<String>> {
     info!(
         "find all files in {:?} (recursive: {}, skip_empty: {})",
         sourceroot, recursive, skip_empty
@@ -160,7 +190,7 @@ fn find_files(
         walk.max_depth(1).into_iter()
     };
 
-    walk.map(std::result::Result::unwrap)
+    let all_groups = walk.map(std::result::Result::unwrap)
         .filter(|entry| entry.path().is_file())
         .map(|entry| {
             (
@@ -173,62 +203,56 @@ fn find_files(
             if size > 0 || !skip_empty {
                 acc.entry(size)
                     .or_insert_with(Vec::new)
-                    .push(data::FdupesFile::new(entry.1, size));
+                    .push(entry.1);
             }
             acc
-        })
-        .values()
-        .cloned()
-        .collect()
+        });
+    info!("{} non-unique groups (by size)", all_groups.len());
+    all_groups.into_iter().filter(|(_size, files)| files.len() > 1).collect()
 }
 
-fn remove_uniq(groups: Vec<Vec<data::FdupesFile>>) -> Vec<Vec<data::FdupesFile>> {
+fn remove_uniq(groups: Vec<data::FdupesGroup>) -> Vec<data::FdupesGroup> {
     groups.into_iter().filter(|value| value.len() > 1).collect()
 }
 
-fn matches(file: &mut data::FdupesFile, group: &[data::FdupesFile]) -> io::Result<bool> {
-    let group_file = group.get(0);
-    let group_file = match group_file {
-        Some(f) => f,
-        _ => return Err(io::Error::new(std::io::ErrorKind::Other, "empty group")),
-    };
-
+fn matches(file: &mut data::FdupesFile, group: &data::FdupesGroup) -> io::Result<bool> {
     file.calculate_metrics();
 
     {
-        let filecrc = file.partial_crc()?;
-        let groupcrc = group_file.partial_crc()?;
+        let filecrc = file.partialcrc()?;
+        let groupcrc = group.partialcrc();
         if filecrc != groupcrc {
             return Ok(false);
         }
     }
 
     {
-        let filecrc = file.full_crc()?;
-        let groupcrc = group_file.full_crc()?;
+        let filecrc = file.fullcrc()?;
+        let groupcrc = group.fullcrc();
         if filecrc != groupcrc {
             return Ok(false);
         }
     }
-    Ok(group_file == file)
+
+    Ok(file == group)
 }
 
-fn build_matches(groups: Vec<Vec<data::FdupesFile>>) -> Vec<Vec<data::FdupesFile>> {
+fn build_matches(groups: BTreeMap<u64, Vec<String>>) -> Vec<data::FdupesGroup> {
     groups
         .into_iter()
-        .flat_map(|group| {
-            debug!("build_matches {:?}", group);
-            let mut result: Vec<Vec<data::FdupesFile>> = Vec::new();
-            for mut file in group {
+        .flat_map(|(size, files)| {
+            debug!("build_matches {}: {:?}", size, files);
+            let mut result: Vec<data::FdupesGroup> = Vec::new();
+            for file in files {
+                let mut file = data::FdupesFile::new(file, size);
+                file.calculate_metrics();
                 if let Some(existing) = result
                     .iter_mut()
                     .find(|existing| matches(&mut file, existing).unwrap_or(false))
                 {
-                    existing.push(file);
+                    existing.add(file);
                 } else {
-                    let mut newgroup = Vec::new();
-                    newgroup.push(file);
-                    result.push(newgroup);
+                    result.push(data::FdupesGroup::from(file));
                 }
             }
             debug!("result: {:?}", result);
@@ -258,9 +282,6 @@ fn main() {
 
     let groups = find_files(sourceroot, recursive, skip_empty);
     info!("{} total groups (by size)", groups.len());
-    // Remove files with unique size
-    let groups = remove_uniq(groups);
-    info!("{} non-unique groups (by size)", groups.len());
     let groups = build_matches(groups);
 
     let groups = remove_uniq(groups);
@@ -269,10 +290,7 @@ fn main() {
     for bucket in groups {
         debug!(
             "{:#?}",
-            bucket
-                .into_iter()
-                .map(|file| file.filename)
-                .collect::<Vec<_>>()
+            bucket.filenames
         );
     }
 }
