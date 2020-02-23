@@ -23,7 +23,7 @@ mod data {
     #[derive(Debug)]
     pub struct FdupesGroup {
         pub filenames: Vec<String>,
-        size: u64,
+        pub size: u64,
         partialcrc: u16,
         fullcrc: u16
     }
@@ -174,7 +174,7 @@ mod data {
 }
 
 fn find_files(
-    sourceroot: std::ffi::OsString,
+    sourceroot: Vec<std::ffi::OsString>,
     recursive: bool,
     skip_empty: bool,
 ) -> BTreeMap<u64, Vec<String>> {
@@ -182,15 +182,16 @@ fn find_files(
         "find all files in {:?} (recursive: {}, skip_empty: {})",
         sourceroot, recursive, skip_empty
     );
-
-    let walk = WalkDir::new(sourceroot);
+    let all_groups = sourceroot.iter().flat_map(|root| {
+    let walk = WalkDir::new(root);
     let walk = if recursive {
         walk.into_iter()
     } else {
         walk.max_depth(1).into_iter()
     };
-
-    let all_groups = walk.map(std::result::Result::unwrap)
+    walk
+    })
+    .map(std::result::Result::unwrap)
         .filter(|entry| entry.path().is_file())
         .map(|entry| {
             (
@@ -276,7 +277,7 @@ fn main() {
         .init();
     // TODO cmd-line args
 
-    let sourceroot = env::args_os().nth(1).unwrap();
+    let sourceroot = env::args_os().skip(1).collect::<Vec<_>>();
     let recursive = true;
     let skip_empty = true;
 
@@ -288,7 +289,8 @@ fn main() {
     info!("{} non-unique groups (by exact content)", groups.len());
 
     for bucket in groups {
-        debug!(
+        println!("{} bytes each:", bucket.size);
+        println!(
             "{:#?}",
             bucket.filenames
         );
