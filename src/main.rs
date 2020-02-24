@@ -290,9 +290,8 @@ fn main() {
 
     for bucket in groups {
         println!("{} bytes each:", bucket.size);
-        println!(
-            "{:#?}",
-            bucket.filenames
-        );
+        for filename in bucket.filenames {
+            println!("    {}", filename);
+        }
     }
 }

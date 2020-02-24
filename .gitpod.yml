@@ -1,4 +1,5 @@
 tasks:
   - init: cargo build
     command: cargo watch -x run
-image: gitpod/workspace-full
+image:
+  file: docker/Dockerfile
