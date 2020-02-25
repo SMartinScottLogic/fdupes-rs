@@ -4,3 +4,4 @@ fdupes: old_src/fdupes.cpp old_src/crc_32.cpp old_src/crc_32.h
 .PHONY: clean
 clean:
 	rm -f fdupes
+
