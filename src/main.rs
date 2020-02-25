@@ -2,6 +2,7 @@
 extern crate log;
 extern crate chrono;
 extern crate env_logger;
+extern crate serde;
 
 use chrono::Local;
 use env_logger::{Builder, Env};
@@ -17,10 +18,12 @@ mod data {
     use std::io;
     use std::io::prelude::*;
     use std::io::BufReader;
+    use serde::{Deserialize, Serialize};
+    use serde_json::Result;
 
     const BLOCK_SIZE: usize = 1024;
 
-    #[derive(Debug)]
+    #[derive(Debug, Serialize, Deserialize)]
     pub struct FdupesGroup {
         pub filenames: Vec<String>,
         pub size: u64,
@@ -290,8 +293,9 @@ fn main() {
 
     for bucket in groups {
         println!("{} bytes each:", bucket.size);
-        for filename in bucket.filenames {
+        for filename in &bucket.filenames {
             println!("    {}", filename);
         }
+        println!("{}", serde_json::to_string(&bucket).unwrap_or(String::from("")));
     }
 }
