@@ -1,1 +1,3 @@
 /target/
+/fdupes
+/Cargo.lock
