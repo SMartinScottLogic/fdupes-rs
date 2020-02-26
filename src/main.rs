@@ -292,10 +292,6 @@ fn main() {
     info!("{} non-unique groups (by exact content)", groups.len());
 
     for bucket in groups {
-        println!("{} bytes each:", bucket.size);
-        for filename in &bucket.filenames {
-            println!("    {}", filename);
-        }
         println!("{}", serde_json::to_string(&bucket).unwrap_or(String::from("")));
     }
 }

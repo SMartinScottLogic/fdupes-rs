@@ -373,11 +373,18 @@ void printmatches(void) {
   for(auto size_it=filelist.rbegin(); size_it!=filelist.rend(); ++size_it) {
     auto size = size_it->first;
     for(auto grp_it=size_it->second.begin(); grp_it!=size_it->second.end(); ++grp_it) {
+        /*
       if (ISFLAG(flags, F_SHOWSIZE)) printf("%zu byte%s each:\n", size, (size != 1) ? "s" : "");
       for(auto file_it=grp_it->begin(); file_it!=grp_it->end(); ++file_it) {
         printf("%s (%c)%c", file_it->name.c_str(), file_it->read_only ? 'R' : 'W', ISFLAG(flags, F_DSAMELINE)?' ':'\n');
       }
       printf("\n");
+      */
+      printf("{\"filenames\":[");
+      for(auto file_it=grp_it->begin(); file_it!=grp_it->end(); ++file_it) {
+          printf("%s\"%s\"", file_it==grp_it->begin()?"":",", file_it->name.c_str());
+      }
+      printf("],\"size\":%zu}\n", size);
     }
   }
 }
