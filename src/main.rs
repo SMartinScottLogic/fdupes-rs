@@ -20,8 +20,12 @@ mod data {
     use std::io::BufReader;
     use serde::{Deserialize, Serialize};
     use serde_json::Result;
+    use memcmp::Memcmp;
 
     const BLOCK_SIZE: usize = 1024;
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    pub static CALL_COUNT: AtomicUsize = AtomicUsize::new(0);
 
     #[derive(Debug, Serialize, Deserialize)]
     pub struct FdupesGroup {
@@ -109,12 +113,14 @@ mod data {
                 };
             }
 
+            /*
             if !self.fullcrc.0 {
                 self.fullcrc = match Self::gen_fullcrc(&self.filename) {
                     Ok(crc) => (true, true, crc),
                     _ => (true, false, 0_u16),
                 };
             }
+            */
         }
 
         pub fn partialcrc(&self) -> io::Result<u16> {
@@ -142,6 +148,8 @@ mod data {
 
     impl PartialEq<FdupesGroup> for FdupesFile {
         fn eq(&self, other: &FdupesGroup) -> bool {
+            CALL_COUNT.fetch_add(1, Ordering::SeqCst);
+
             let mut reader_a = match File::open(&self.filename) {
                 Ok(f) => BufReader::new(f),
                 _ => return false,
@@ -168,7 +176,7 @@ mod data {
                 if read_bytes_a == 0 {
                     return true;
                 }
-                if buf_a[..read_bytes_a].to_vec() != buf_b[..read_bytes_b].to_vec() {
+                if !buf_a.memcmp(&buf_b) {
                     return false;
                 }
             }
@@ -230,6 +238,7 @@ fn matches(file: &mut data::FdupesFile, group: &data::FdupesGroup) -> io::Result
         }
     }
 
+    /*
     {
         let filecrc = file.fullcrc()?;
         let groupcrc = group.fullcrc();
@@ -237,7 +246,7 @@ fn matches(file: &mut data::FdupesFile, group: &data::FdupesGroup) -> io::Result
             return Ok(false);
         }
     }
-
+    */
     Ok(file == group)
 }
 
@@ -289,9 +298,10 @@ fn main() {
     let groups = build_matches(groups);
 
     let groups = remove_uniq(groups);
-    info!("{} non-unique groups (by exact content)", groups.len());
 
-    for bucket in groups {
+    for bucket in &groups {
         println!("{}", serde_json::to_string(&bucket).unwrap_or(String::from("")));
     }
+    info!("{} non-unique groups (by exact content)", groups.len());
+    println!("eq called: {}", data::CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst));
 }
