@@ -14,13 +14,13 @@ use walkdir::WalkDir;
 
 mod data {
     use crc::{crc16, Hasher16};
+    use memcmp::Memcmp;
+    use serde::{Deserialize, Serialize};
+    use serde_json::Result;
     use std::fs::File;
     use std::io;
     use std::io::prelude::*;
     use std::io::BufReader;
-    use serde::{Deserialize, Serialize};
-    use serde_json::Result;
-    use memcmp::Memcmp;
 
     const BLOCK_SIZE: usize = 1024;
 
@@ -32,7 +32,7 @@ mod data {
         pub filenames: Vec<String>,
         pub size: u64,
         partialcrc: u16,
-        fullcrc: u16
+        fullcrc: u16,
     }
 
     impl FdupesGroup {
@@ -55,7 +55,12 @@ mod data {
 
     impl From<FdupesFile> for FdupesGroup {
         fn from(file: FdupesFile) -> Self {
-            FdupesGroup { filenames: [file.filename].to_vec(), size: file.size, partialcrc: file.partialcrc.2, fullcrc: file.fullcrc.2 }
+            FdupesGroup {
+                filenames: [file.filename].to_vec(),
+                size: file.size,
+                partialcrc: file.partialcrc.2,
+                fullcrc: file.fullcrc.2,
+            }
         }
     }
 
@@ -113,14 +118,12 @@ mod data {
                 };
             }
 
-            /*
             if !self.fullcrc.0 {
                 self.fullcrc = match Self::gen_fullcrc(&self.filename) {
                     Ok(crc) => (true, true, crc),
                     _ => (true, false, 0_u16),
                 };
             }
-            */
         }
 
         pub fn partialcrc(&self) -> io::Result<u16> {
@@ -193,34 +196,37 @@ fn find_files(
         "find all files in {:?} (recursive: {}, skip_empty: {})",
         sourceroot, recursive, skip_empty
     );
-    let all_groups = sourceroot.iter().flat_map(|root| {
-    let walk = WalkDir::new(root);
-    let walk = if recursive {
-        walk.into_iter()
-    } else {
-        walk.max_depth(1).into_iter()
-    };
-    walk
-    })
-    .map(std::result::Result::unwrap)
+    let all_groups = sourceroot
+        .iter()
+        .flat_map(|root| {
+            info!("scanning {:?}...", root);
+            let walk = WalkDir::new(root);
+            if recursive {
+                walk.into_iter()
+            } else {
+                walk.max_depth(1).into_iter()
+            }
+        })
+        .map(std::result::Result::unwrap)
         .filter(|entry| entry.path().is_file())
         .map(|entry| {
             (
                 entry.metadata().unwrap().len(),
-                entry.path().to_str().unwrap().to_string(),
+                entry.path().to_str().unwrap_or("").to_string(),
             )
         })
         .fold(BTreeMap::new(), |mut acc, entry| {
             let size = entry.0;
             if size > 0 || !skip_empty {
-                acc.entry(size)
-                    .or_insert_with(Vec::new)
-                    .push(entry.1);
+                acc.entry(size).or_insert_with(Vec::new).push(entry.1);
             }
             acc
         });
     info!("{} non-unique groups (by size)", all_groups.len());
-    all_groups.into_iter().filter(|(_size, files)| files.len() > 1).collect()
+    all_groups
+        .into_iter()
+        .filter(|(_size, files)| files.len() > 1)
+        .collect()
 }
 
 fn remove_uniq(groups: Vec<data::FdupesGroup>) -> Vec<data::FdupesGroup> {
@@ -237,8 +243,6 @@ fn matches(file: &mut data::FdupesFile, group: &data::FdupesGroup) -> io::Result
             return Ok(false);
         }
     }
-
-    /*
     {
         let filecrc = file.fullcrc()?;
         let groupcrc = group.fullcrc();
@@ -246,7 +250,6 @@ fn matches(file: &mut data::FdupesFile, group: &data::FdupesGroup) -> io::Result
             return Ok(false);
         }
     }
-    */
     Ok(file == group)
 }
 
@@ -300,8 +303,10 @@ fn main() {
     let groups = remove_uniq(groups);
 
     for bucket in &groups {
-        println!("{}", serde_json::to_string(&bucket).unwrap_or(String::from("")));
+        println!(
+            "{}",
+            serde_json::to_string(&bucket).unwrap_or_else(|_| String::from(""))
+        );
     }
     info!("{} non-unique groups (by exact content)", groups.len());
-    println!("eq called: {}", data::CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst));
 }
