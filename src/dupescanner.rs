@@ -30,14 +30,14 @@ impl DupeScanner {
         let groups = self.find_files();
         info!("{} total groups (by size)", groups.len());
         self.build_matches(groups);
-        self.tx.send(DupeMessage::End);
+        self.tx.send(DupeMessage::End).unwrap();
     }
 }
 
 impl DupeScanner {
     fn send(&self, groups: Vec<FdupesGroup>) {
         for bucket in groups {
-            self.tx.send(bucket.into());
+            self.tx.send(bucket.into()).unwrap();
         }
     }
 

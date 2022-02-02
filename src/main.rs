@@ -30,7 +30,7 @@ fn handle_group(size: u64, filenames: Vec<String>) {
         println!("Preserve files [1 - {}, all, none, quit]", filenames.len());
 
         let id = 0;
-        if let Some(filename) = filenames.get(id) {
+        if let Some(_filename) = filenames.get(id) {
         }
         println!();
     }
@@ -74,5 +74,5 @@ fn main() {
         }
     }
 
-    finder.join();
+    finder.join().unwrap();
 }
