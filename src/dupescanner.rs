@@ -1,8 +1,8 @@
-use std::{ffi::OsString, sync::mpsc::Sender, collections::BTreeMap, io};
+use std::{collections::BTreeMap, ffi::OsString, io, sync::mpsc::Sender};
 
-use log::{info, debug, trace};
-use walkdir::WalkDir;
 use crate::{dupemessage::DupeMessage, fdupesgroup::FdupesGroup};
+use log::{debug, info, trace};
+use walkdir::WalkDir;
 
 pub struct DupeScanner {
     tx: Sender<DupeMessage>,
@@ -122,4 +122,3 @@ impl DupeScanner {
         Ok(file == group)
     }
 }
-

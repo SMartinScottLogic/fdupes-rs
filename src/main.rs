@@ -1,11 +1,12 @@
-extern crate log;
 extern crate chrono;
 extern crate env_logger;
+extern crate log;
 extern crate serde;
 
 use chrono::Local;
 use env_logger::{Builder, Env};
 use std::env;
+use std::io;
 use std::io::prelude::*;
 
 use std::sync::mpsc;
@@ -27,12 +28,57 @@ fn handle_group(size: u64, filenames: Vec<String>) {
         for (id, filename) in filenames.iter().enumerate() {
             println!("[{}] {} (W)", id + 1, filename);
         }
-        println!("Preserve files [1 - {}, all, none, quit]", filenames.len());
+        let files = loop {
+            let mut files = filenames.iter().map(|f| (f, false)).collect::<Vec<_>>();
+            print!("Preserve files [1 - {}, all, none, quit]", filenames.len());
+            if true {
+                if size == 1 {
+                    print!(" ({} byte each)", size.to_formatted_string(&Locale::en_GB));
+                } else {
+                    print!(" ({} bytes each)", size.to_formatted_string(&Locale::en_GB));
+                }
+            }
+            print!(": ");
+            io::stdout().flush().unwrap();
+            let mut buffer = String::new();
+            let mut done = false;
+            if io::stdin().read_line(&mut buffer).is_ok() {
+                for choice in buffer.split(|c| c == ' ' || c == '\n' || c == ',') {
+                    match choice {
+                        "quit" => std::process::exit(0),
+                        "all" => {
+                            for file in &mut files {
+                                file.1 = true;
+                            }
+                            done = true;
+                        }
+                        "none" => {
+                            for file in &mut files {
+                                file.1 = false;
+                            }
+                            done = true;
+                        }
+                        val => {
+                            if let Ok(val) = val.parse::<usize>() {
+                                if let Some(file) = files.get_mut(val - 1) {
+                                    file.1 = true;
+                                    done = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if done {
+                break files;
+            }
+        };
 
-        let id = 0;
-        if let Some(_filename) = filenames.get(id) {
+        for (filename, purge) in files {
+            if purge {
+                println!("rm {filename}");
+            }
         }
-        println!();
     }
 }
 
