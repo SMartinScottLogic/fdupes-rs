@@ -250,9 +250,9 @@ mod tests {
     use std::fs;
     use std::io::Write;
 
-    const COLLISION_FILENAME: &str = "test_data\\collision_scratch.txt";
-    const TEST_DATA1: &str = "test_data\\file1.txt";
-    const TEST_DATA2: &str = "test_data\\file2.txt";
+    const COLLISION_FILENAME: &str = "test_data/collision_scratch.txt";
+    const TEST_DATA1: &str = "test_data/file1.txt";
+    const TEST_DATA2: &str = "test_data/file2.txt";
 
     fn test_group(files: &[&str]) -> FdupesGroup {
         let mut group = FdupesGroup::default();
@@ -293,9 +293,9 @@ mod tests {
     fn collision() {
         let mut fullcrcs = std::collections::HashMap::new();
         for i in 0..=u64::MAX {
-            generate_test_file(&TEST_DATA1, &COLLISION_FILENAME, i);
-            let crc = test_group(&[&COLLISION_FILENAME]).fullcrc().unwrap();
-            fullcrcs.entry(crc).or_insert_with(|| Vec::new()).push(i);
+            generate_test_file(TEST_DATA1, COLLISION_FILENAME, i);
+            let crc = test_group(&[COLLISION_FILENAME]).fullcrc().unwrap();
+            fullcrcs.entry(crc).or_insert_with(Vec::new).push(i);
             if fullcrcs.get(&crc).unwrap().len() > 1 {
                 break;
             }
@@ -306,8 +306,8 @@ mod tests {
         let file_a = "test_data\\collision_file_a";
         let file_b = "test_data\\collision_file_b";
 
-        generate_test_file(&TEST_DATA1, file_a, *collision.get(0).unwrap());
-        generate_test_file(&TEST_DATA1, file_b, *collision.get(1).unwrap());
+        generate_test_file(TEST_DATA1, file_a, *collision.get(0).unwrap());
+        generate_test_file(TEST_DATA1, file_b, *collision.get(1).unwrap());
 
         let mut group_a = test_group(&[file_a]);
         let mut group_b = test_group(&[file_b]);
