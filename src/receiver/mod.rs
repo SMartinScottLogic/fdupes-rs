@@ -1,4 +1,3 @@
-
 use log::error;
 use num_format::{Locale, ToFormattedString};
 use std::io;
@@ -30,10 +29,14 @@ fn handle_group(size: u64, filenames: Vec<String>, config: &Config) {
             print!(": ");
             io::stdout().flush().unwrap();
             let mut done = false;
-            
+
             let mut buffer = String::new();
             if io::stdin().read_line(&mut buffer).is_ok() {
-                for choice in buffer.split(|c| c == ' ' || c == '\n' || c == ',') {
+                for choice in buffer.split(|c: char| c.is_whitespace() || c == ',') {
+                    let choice = choice.trim();
+                    if choice.is_empty() {
+                        continue;
+                    }
                     match choice {
                         "quit" => std::process::exit(0),
                         "all" => {
@@ -55,7 +58,7 @@ fn handle_group(size: u64, filenames: Vec<String>, config: &Config) {
                     }
                 }
             }
-            
+
             if done {
                 break files;
             }
