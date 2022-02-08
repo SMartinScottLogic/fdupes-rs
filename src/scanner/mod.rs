@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::io::ErrorKind;
 
-use crate::{DupeMessage, Config};
+use crate::{Config, DupeMessage};
 
 const BLOCK_SIZE: usize = 1024;
 
@@ -21,16 +21,10 @@ pub struct DupeScanner {
 }
 
 impl DupeScanner {
-    pub fn new(
-        tx: Sender<DupeMessage>,
-        config: Config,
-    ) -> Self {
-        Self {
-            tx,
-            config,
-        }
+    pub fn new(tx: Sender<DupeMessage>, config: Config) -> Self {
+        Self { tx, config }
     }
-} 
+}
 
 impl DupeScanner {
     pub fn find_groups(&self) {
@@ -52,7 +46,8 @@ impl DupeScanner {
             self.config.root, self.config.non_recursive, self.config.include_empty
         );
         let all_groups = self
-            .config.root
+            .config
+            .root
             .iter()
             .flat_map(|root| {
                 info!("scanning {:?}...", root);
@@ -246,5 +241,83 @@ impl PartialEq<FdupesGroup> for FdupesGroup {
             reader_a.consume(length_a);
             reader_b.consume(length_b);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FdupesGroup;
+    use std::fs;
+    use std::io::Write;
+
+    const COLLISION_FILENAME: &str = "test_data\\collision_scratch.txt";
+    const TEST_DATA1: &str = "test_data\\file1.txt";
+    const TEST_DATA2: &str = "test_data\\file2.txt";
+
+    fn test_group(files: &[&str]) -> FdupesGroup {
+        let mut group = FdupesGroup::default();
+        for file in files {
+            group.add(file);
+        }
+        group.size = fs::File::open(files[0]).unwrap().metadata().unwrap().len();
+        group
+    }
+
+    #[test]
+    fn partialcrc_diff() {
+        let mut group1 = test_group(&[TEST_DATA1]);
+        let mut group2 = test_group(&[TEST_DATA2]);
+
+        assert_eq!(group1.partialcrc().unwrap(), group2.partialcrc().unwrap());
+    }
+
+    #[test]
+    fn fullcrc_diff() {
+        let mut group1 = test_group(&[TEST_DATA1]);
+        let mut group2 = test_group(&[TEST_DATA2]);
+
+        assert_ne!(group1.fullcrc().unwrap(), group2.fullcrc().unwrap());
+    }
+
+    fn generate_test_file(source: &str, target: &str, trail: u64) {
+        fs::copy(source, target).unwrap();
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .append(true)
+            .open(target)
+            .unwrap();
+        write!(&mut file, "{:08}", trail).unwrap();
+    }
+
+    #[test]
+    fn collision() {
+        let mut fullcrcs = std::collections::HashMap::new();
+        for i in 0..=u64::MAX {
+            generate_test_file(&TEST_DATA1, &COLLISION_FILENAME, i);
+            let crc = test_group(&[&COLLISION_FILENAME]).fullcrc().unwrap();
+            fullcrcs.entry(crc).or_insert_with(|| Vec::new()).push(i);
+            if fullcrcs.get(&crc).unwrap().len() > 1 {
+                break;
+            }
+        }
+        fs::remove_file(COLLISION_FILENAME).unwrap();
+        let (_crc, collision) = fullcrcs.iter().find(|(_crc, e)| e.len() > 1).unwrap();
+
+        let file_a = "test_data\\collision_file_a";
+        let file_b = "test_data\\collision_file_b";
+
+        generate_test_file(&TEST_DATA1, file_a, *collision.get(0).unwrap());
+        generate_test_file(&TEST_DATA1, file_b, *collision.get(1).unwrap());
+
+        let mut group_a = test_group(&[file_a]);
+        let mut group_b = test_group(&[file_b]);
+
+        assert_eq!(group_a.partialcrc().unwrap(), group_b.partialcrc().unwrap());
+        assert_eq!(group_a.fullcrc().unwrap(), group_b.fullcrc().unwrap());
+        assert_eq!(group_a.size, group_b.size);
+        assert_ne!(group_a, group_b);
+
+        fs::remove_file(file_a).unwrap();
+        fs::remove_file(file_b).unwrap();
     }
 }
