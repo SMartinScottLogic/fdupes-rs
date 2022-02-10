@@ -5,9 +5,9 @@ use std::{io::Write, sync::mpsc::Receiver};
 
 use crate::{Config, DupeMessage};
 
-fn mark_group(files: &mut Vec<(&String, bool)>, active: bool) {
+fn mark_group(files: &mut Vec<(&String, bool)>, purge: bool) {
     for file in files {
-        file.1 = active;
+        file.1 = purge;
     }
 }
 
@@ -39,11 +39,11 @@ fn handle_group(size: u64, filenames: Vec<String>, config: &Config) {
                     }
                     match choice {
                         "quit" => std::process::exit(0),
-                        "all" => {
+                        "none" => {
                             mark_group(&mut files, true);
                             done = true;
                         }
-                        "none" => {
+                        "all" => {
                             mark_group(&mut files, false);
                             done = true;
                         }
@@ -66,7 +66,11 @@ fn handle_group(size: u64, filenames: Vec<String>, config: &Config) {
 
         for (filename, purge) in files {
             if purge {
-                println!("rm {filename}");
+                if config.trash {
+                    trash::delete(filename).unwrap();
+                } else {
+                    std::fs::remove_file(filename).unwrap();
+                }
             }
         }
     }
