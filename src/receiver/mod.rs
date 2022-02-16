@@ -5,13 +5,19 @@ use std::{io::Write, sync::mpsc::Receiver};
 
 use crate::{Config, DupeMessage};
 
-fn mark_group(files: &mut Vec<(&String, bool)>, purge: bool) {
+#[derive(PartialEq, Copy, Clone)]
+enum Mark {
+    Purge,
+    Keep
+}
+
+fn mark_group(files: &mut Vec<(&String, Mark)>, purge: Mark) {
     for file in files {
         file.1 = purge;
     }
 }
 
-fn process_input(buffer: &str, files: &mut Vec<(&String, bool)>) -> bool {
+fn process_input(buffer: &str, files: &mut Vec<(&String, Mark)>) -> bool {
     let mut done = false;
     for choice in buffer.split(|c: char| c.is_whitespace() || c == ',') {
         let choice = choice.trim();
@@ -21,17 +27,17 @@ fn process_input(buffer: &str, files: &mut Vec<(&String, bool)>) -> bool {
         match choice {
             "quit" => std::process::exit(0),
             "none" => {
-                mark_group(files, false);
+                mark_group(files, Mark::Purge);
                 done = true;
             }
             "all" => {
-                mark_group(files, true);
+                mark_group(files, Mark::Keep);
                 done = true;
             }
             val => {
                 if let Ok(val) = val.parse::<usize>() {
                     if let Some(file) = files.get_mut(val - 1) {
-                        file.1 = true;
+                        file.1 = Mark::Keep;
                         done = true;
                     }
                 }
@@ -47,7 +53,7 @@ fn handle_group(size: u64, filenames: Vec<String>, config: &Config) {
             println!("[{}] {} (W)", id + 1, filename);
         }
         let files = loop {
-            let mut files = filenames.iter().map(|f| (f, false)).collect::<Vec<_>>();
+            let mut files = filenames.iter().map(|f| (f, Mark::Purge)).collect::<Vec<_>>();
             print!("Preserve files [1 - {}, all, none, quit]", filenames.len());
             if config.show_sizes {
                 if size == 1 {
@@ -70,8 +76,8 @@ fn handle_group(size: u64, filenames: Vec<String>, config: &Config) {
             }
         };
 
-        for (filename, preserve) in files {
-            if !preserve {
+        for (filename, mark) in files {
+            if Mark::Purge == mark {
                 if config.trash {
                     trash::delete(filename).unwrap();
                 } else {
@@ -105,10 +111,10 @@ mod tests {
         let file1 = "test1".to_string();
         let file2 = "test2".to_string();
         let file3 = "test3".to_string();
-        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
-        mark_group(&mut files, false);
+        let mut files = vec![(&file1, Mark::Keep), (&file2, Mark::Keep), (&file3, Mark::Keep)];
+        mark_group(&mut files, Mark::Purge);
         for (file, mark) in files {
-            assert!(!mark, "{} should be unmarked", file);
+            assert!(mark == Mark::Purge, "{} should be purged", file);
         }
     }
 
@@ -117,10 +123,10 @@ mod tests {
         let file1 = "test1".to_string();
         let file2 = "test2".to_string();
         let file3 = "test3".to_string();
-        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
-        mark_group(&mut files, true);
+        let mut files = vec![(&file1, Mark::Purge), (&file2, Mark::Purge), (&file3, Mark::Purge)];
+        mark_group(&mut files, Mark::Keep);
         for (file, mark) in files {
-            assert!(mark, "{} should be marked", file);
+            assert!(mark == Mark::Keep, "{} should be retained", file);
         }
     }
 
@@ -129,11 +135,11 @@ mod tests {
         let file1 = "test1".to_string();
         let file2 = "test2".to_string();
         let file3 = "test3".to_string();
-        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        let mut files = vec![(&file1, Mark::Purge), (&file2, Mark::Purge), (&file3, Mark::Purge)];
         let done = process_input("", &mut files);
         assert!(!done);
         for (file, mark) in files {
-            assert!(!mark, "{} should be unmarked", file);
+            assert!(mark == Mark::Purge, "{} should be purged", file);
         }
     }
 
@@ -142,11 +148,11 @@ mod tests {
         let file1 = "test1".to_string();
         let file2 = "test2".to_string();
         let file3 = "test3".to_string();
-        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        let mut files = vec![(&file1, Mark::Purge), (&file2, Mark::Purge), (&file3, Mark::Purge)];
         let done = process_input("all", &mut files);
         assert!(done);
         for (file, mark) in files {
-            assert!(mark, "{} should be marked", file);
+            assert!(mark == Mark::Keep, "{} should be retained", file);
         }
     }
 
@@ -155,11 +161,11 @@ mod tests {
         let file1 = "test1".to_string();
         let file2 = "test2".to_string();
         let file3 = "test3".to_string();
-        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        let mut files = vec![(&file1, Mark::Purge), (&file2, Mark::Purge), (&file3, Mark::Purge)];
         let done = process_input("none", &mut files);
         assert!(done);
         for (file, mark) in files {
-            assert!(!mark, "{} should be unmarked", file);
+            assert!(mark == Mark::Purge, "{} should be purged", file);
         }
     }
 
@@ -168,14 +174,14 @@ mod tests {
         let file1 = "test1".to_string();
         let file2 = "test2".to_string();
         let file3 = "test3".to_string();
-        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        let mut files = vec![(&file1, Mark::Purge), (&file2, Mark::Purge), (&file3, Mark::Purge)];
         let done = process_input("2", &mut files);
         assert!(done);
         for (file, mark) in files {
             if *file == file2 {
-                assert!(mark, "{} should be marked", file);
+                assert!(mark == Mark::Keep, "{} should be retained", file);
             } else {
-                assert!(!mark, "{} should be unmarked", file);
+                assert!(mark == Mark::Purge, "{} should be purged", file);
             }
         }
     }
