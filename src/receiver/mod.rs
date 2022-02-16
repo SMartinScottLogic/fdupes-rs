@@ -11,6 +11,36 @@ fn mark_group(files: &mut Vec<(&String, bool)>, purge: bool) {
     }
 }
 
+fn process_input(buffer: &str, files: &mut Vec<(&String, bool)>) -> bool {
+    let mut done = false;
+    for choice in buffer.split(|c: char| c.is_whitespace() || c == ',') {
+        let choice = choice.trim();
+        if choice.is_empty() {
+            continue;
+        }
+        match choice {
+            "quit" => std::process::exit(0),
+            "none" => {
+                mark_group(files, false);
+                done = true;
+            }
+            "all" => {
+                mark_group(files, true);
+                done = true;
+            }
+            val => {
+                if let Ok(val) = val.parse::<usize>() {
+                    if let Some(file) = files.get_mut(val - 1) {
+                        file.1 = true;
+                        done = true;
+                    }
+                }
+            }
+        }
+    }
+    done
+}
+
 fn handle_group(size: u64, filenames: Vec<String>, config: &Config) {
     if filenames.len() > 1 {
         for (id, filename) in filenames.iter().enumerate() {
@@ -32,31 +62,7 @@ fn handle_group(size: u64, filenames: Vec<String>, config: &Config) {
 
             let mut buffer = String::new();
             if io::stdin().read_line(&mut buffer).is_ok() {
-                for choice in buffer.split(|c: char| c.is_whitespace() || c == ',') {
-                    let choice = choice.trim();
-                    if choice.is_empty() {
-                        continue;
-                    }
-                    match choice {
-                        "quit" => std::process::exit(0),
-                        "none" => {
-                            mark_group(&mut files, true);
-                            done = true;
-                        }
-                        "all" => {
-                            mark_group(&mut files, false);
-                            done = true;
-                        }
-                        val => {
-                            if let Ok(val) = val.parse::<usize>() {
-                                if let Some(file) = files.get_mut(val - 1) {
-                                    file.1 = true;
-                                    done = true;
-                                }
-                            }
-                        }
-                    }
-                }
+                done = process_input(&buffer, &mut files);
             }
 
             if done {
@@ -64,8 +70,8 @@ fn handle_group(size: u64, filenames: Vec<String>, config: &Config) {
             }
         };
 
-        for (filename, purge) in files {
-            if purge {
+        for (filename, preserve) in files {
+            if !preserve {
                 if config.trash {
                     trash::delete(filename).unwrap();
                 } else {
@@ -86,6 +92,91 @@ pub fn receiver(rx: Receiver<DupeMessage>, config: Config) {
             handle_group(size, filenames, &config);
         } else {
             break;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    
+    #[test]
+    fn mark_group_false() {
+        let file1 = "test1".to_string();
+        let file2 = "test2".to_string();
+        let file3 = "test3".to_string();
+        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        mark_group(&mut files, false);
+        for (file, mark) in files {
+            assert!(!mark, "{} should be unmarked", file);
+        }
+    }
+
+    #[test]
+    fn mark_group_true() {
+        let file1 = "test1".to_string();
+        let file2 = "test2".to_string();
+        let file3 = "test3".to_string();
+        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        mark_group(&mut files, true);
+        for (file, mark) in files {
+            assert!(mark, "{} should be marked", file);
+        }
+    }
+
+    #[test]
+    fn process_input_empty() {
+        let file1 = "test1".to_string();
+        let file2 = "test2".to_string();
+        let file3 = "test3".to_string();
+        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        let done = process_input("", &mut files);
+        assert!(!done);
+        for (file, mark) in files {
+            assert!(!mark, "{} should be unmarked", file);
+        }
+    }
+
+    #[test]
+    fn process_input_all() {
+        let file1 = "test1".to_string();
+        let file2 = "test2".to_string();
+        let file3 = "test3".to_string();
+        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        let done = process_input("all", &mut files);
+        assert!(done);
+        for (file, mark) in files {
+            assert!(mark, "{} should be marked", file);
+        }
+    }
+
+    #[test]
+    fn process_input_none() {
+        let file1 = "test1".to_string();
+        let file2 = "test2".to_string();
+        let file3 = "test3".to_string();
+        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        let done = process_input("none", &mut files);
+        assert!(done);
+        for (file, mark) in files {
+            assert!(!mark, "{} should be unmarked", file);
+        }
+    }
+
+    #[test]
+    fn process_input_single() {
+        let file1 = "test1".to_string();
+        let file2 = "test2".to_string();
+        let file3 = "test3".to_string();
+        let mut files = vec![(&file1, false), (&file2, false), (&file3, false)];
+        let done = process_input("2", &mut files);
+        assert!(done);
+        for (file, mark) in files {
+            if *file == file2 {
+                assert!(mark, "{} should be marked", file);
+            } else {
+                assert!(!mark, "{} should be unmarked", file);
+            }
         }
     }
 }
