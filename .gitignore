@@ -1,3 +1,4 @@
 /target/
 /fdupes
 /Cargo.lock
+*.snap
