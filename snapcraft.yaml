@@ -1,0 +1,19 @@
+name: rust-fdupes
+version: git
+summary: A fast duplicate file scanner written in Rust
+description: |
+  fdupes is a command line program for scanning folder(s)
+  for duplicate files, and removing selected files from
+  each group
+
+base: core18
+confinement: devmode
+
+parts:
+  rust-fdupes:
+    plugin: rust
+    source: .
+
+apps:
+  rust-fdupes:
+    command: bin/fdupes
