@@ -7,8 +7,8 @@ use clap::StructOpt;
 use env_logger::{Builder, Env};
 use std::io::prelude::*;
 
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
 use std::thread;
 
 use fdupes::{receiver::receiver, Config, DupeMessage, DupeScanner};

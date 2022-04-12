@@ -1,6 +1,6 @@
 use num_format::{Locale, ToFormattedString};
 use std::io;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 use std::{io::Write, sync::mpsc::Receiver};
 
 use crate::{Config, DupeMessage};
@@ -10,7 +10,7 @@ type DupeGroup<'a> = Vec<(&'a PathBuf, Mark)>;
 #[derive(PartialEq, Copy, Clone)]
 enum Mark {
     Purge,
-    Keep
+    Keep,
 }
 
 fn mark_group(files: &mut DupeGroup, purge: Mark) {
@@ -55,7 +55,10 @@ fn handle_group(size: u64, filenames: Vec<PathBuf>, config: &Config) {
             println!("[{}] {:?} (W)", id + 1, filename);
         }
         let files = loop {
-            let mut files = filenames.iter().map(|f| (f, Mark::Purge)).collect::<DupeGroup>();
+            let mut files = filenames
+                .iter()
+                .map(|f| (f, Mark::Purge))
+                .collect::<DupeGroup>();
             print!("Preserve files [1 - {}, all, none, quit]", filenames.len());
             if config.show_sizes {
                 if size == 1 {
@@ -101,14 +104,18 @@ mod tests {
     use super::*;
 
     lazy_static::lazy_static! {
-        static ref FILE1: PathBuf = PathBuf::from("test1");
-        static ref FILE2: PathBuf = PathBuf::from("test2");
-        static ref FILE3: PathBuf = PathBuf::from("test3");
-        }
-    
+    static ref FILE1: PathBuf = PathBuf::from("test1");
+    static ref FILE2: PathBuf = PathBuf::from("test2");
+    static ref FILE3: PathBuf = PathBuf::from("test3");
+    }
+
     #[test]
     fn mark_group_false() {
-        let mut files = vec![(&*FILE1, Mark::Keep), (&*FILE2, Mark::Keep), (&*FILE3, Mark::Keep)];
+        let mut files = vec![
+            (&*FILE1, Mark::Keep),
+            (&*FILE2, Mark::Keep),
+            (&*FILE3, Mark::Keep),
+        ];
         mark_group(&mut files, Mark::Purge);
         for (file, mark) in files {
             assert!(mark == Mark::Purge, "{:?} should be purged", file);
@@ -117,7 +124,11 @@ mod tests {
 
     #[test]
     fn mark_group_true() {
-        let mut files = vec![(&*FILE1, Mark::Purge), (&*FILE2, Mark::Purge), (&*FILE3, Mark::Purge)];
+        let mut files = vec![
+            (&*FILE1, Mark::Purge),
+            (&*FILE2, Mark::Purge),
+            (&*FILE3, Mark::Purge),
+        ];
         mark_group(&mut files, Mark::Keep);
         for (file, mark) in files {
             assert!(mark == Mark::Keep, "{:?} should be retained", file);
@@ -126,7 +137,11 @@ mod tests {
 
     #[test]
     fn process_input_empty() {
-        let mut files = vec![(&*FILE1, Mark::Purge), (&*FILE2, Mark::Purge), (&*FILE3, Mark::Purge)];
+        let mut files = vec![
+            (&*FILE1, Mark::Purge),
+            (&*FILE2, Mark::Purge),
+            (&*FILE3, Mark::Purge),
+        ];
         let done = process_input("", &mut files);
         assert!(!done);
         for (file, mark) in files {
@@ -136,7 +151,11 @@ mod tests {
 
     #[test]
     fn process_input_all() {
-        let mut files = vec![(&*FILE1, Mark::Purge), (&*FILE2, Mark::Purge), (&*FILE3, Mark::Purge)];
+        let mut files = vec![
+            (&*FILE1, Mark::Purge),
+            (&*FILE2, Mark::Purge),
+            (&*FILE3, Mark::Purge),
+        ];
         let done = process_input("all", &mut files);
         assert!(done);
         for (file, mark) in files {
@@ -146,7 +165,11 @@ mod tests {
 
     #[test]
     fn process_input_none() {
-        let mut files = vec![(&*FILE1, Mark::Purge), (&*FILE2, Mark::Purge), (&*FILE3, Mark::Purge)];
+        let mut files = vec![
+            (&*FILE1, Mark::Purge),
+            (&*FILE2, Mark::Purge),
+            (&*FILE3, Mark::Purge),
+        ];
         let done = process_input("none", &mut files);
         assert!(done);
         for (file, mark) in files {
@@ -156,7 +179,11 @@ mod tests {
 
     #[test]
     fn process_input_single() {
-        let mut files = vec![(&*FILE1, Mark::Purge), (&*FILE2, Mark::Purge), (&*FILE3, Mark::Purge)];
+        let mut files = vec![
+            (&*FILE1, Mark::Purge),
+            (&*FILE2, Mark::Purge),
+            (&*FILE3, Mark::Purge),
+        ];
         let done = process_input("2", &mut files);
         assert!(done);
         for (file, mark) in files {

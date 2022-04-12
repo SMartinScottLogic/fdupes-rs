@@ -1,5 +1,5 @@
 use std::io;
-use std::path::{PathBuf, Path};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{collections::BTreeMap, sync::mpsc::Sender};
 
@@ -61,12 +61,7 @@ impl DupeScanner {
             })
             .map(std::result::Result::unwrap)
             .filter(|entry| entry.path().is_file())
-            .map(|entry| {
-                (
-                    entry.metadata().unwrap().len(),
-                    entry.path().to_owned(),
-                )
-            })
+            .map(|entry| (entry.metadata().unwrap().len(), entry.path().to_owned()))
             .fold(BTreeMap::new(), |mut acc, entry| {
                 let size = entry.0;
                 if size > 0 || self.config.include_empty {
