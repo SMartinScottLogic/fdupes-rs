@@ -7,6 +7,7 @@ use clap::StructOpt;
 use env_logger::{Builder, Env};
 use std::io::prelude::*;
 
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 
@@ -34,7 +35,7 @@ fn main() {
 
     let (tx, rx): (Sender<DupeMessage>, Receiver<DupeMessage>) = mpsc::channel();
 
-    let scanner = DupeScanner::new(tx, config.clone());
+    let scanner = DupeScanner::new(tx, Arc::new(config.clone()));
 
     let receiver = thread::spawn(move || receiver(rx, config));
     let scanner = thread::spawn(move || scanner.find_groups());
