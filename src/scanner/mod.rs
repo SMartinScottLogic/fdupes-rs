@@ -58,7 +58,7 @@ impl DupeScanner {
                     walk.into_iter()
                 }
             })
-            .map(std::result::Result::unwrap)
+            .filter_map(|entry| entry.ok())
             .filter(|entry| !entry.path().is_symlink())
             .filter(|entry| entry.path().is_file())
             .map(|entry| {
