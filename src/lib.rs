@@ -9,7 +9,7 @@ pub mod receiver;
 #[clap(author, version, about, long_about = None)]
 pub struct Config {
     /// Path(s) to search for files within.
-    pub root: Vec<String>,
+    pub roots: Vec<String>,
     /// Only find duplicates immediately within supplied directories.
     #[clap(short, long)]
     pub non_recursive: bool,
