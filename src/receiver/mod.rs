@@ -1,9 +1,9 @@
 use num_format::{Locale, ToFormattedString};
-use std::io;
 use std::path::PathBuf;
-use std::{io::Write, sync::mpsc::Receiver};
 
-use crate::{Config, DupeMessage};
+use log::error;
+use num_format::{Locale, ToFormattedString};
+use std::{io, io::Write, sync::{mpsc::{Receiver, TryRecvError}, Arc, Mutex}};
 
 type DupeGroup<'a> = Vec<(&'a PathBuf, Mark)>;
 
@@ -58,7 +58,7 @@ fn handle_group(size: u64, filenames: Vec<PathBuf>, config: &Config) {
             let mut files = filenames
                 .iter()
                 .map(|f| (f, Mark::Purge))
-                .collect::<DupeGroup>();
+                .collect::<Vec<_>>();
             print!("Preserve files [1 - {}, all, none, quit]", filenames.len());
             if config.show_sizes {
                 if size == 1 {
@@ -94,9 +94,21 @@ fn handle_group(size: u64, filenames: Vec<PathBuf>, config: &Config) {
 }
 
 pub fn receiver(rx: Receiver<DupeMessage>, config: Config) {
-    while let Ok((size, filenames)) = rx.recv() {
-        handle_group(size, filenames, &config);
+    loop {
+        match rx.try_recv() {
+            Ok(DupeMessage::Group(size, filenames)) => {
+                log::info!("{} {:?}", size, filenames);
+                handle_group(size, filenames, &config);
+            },
+            Ok(DupeMessage::End) => {
+                log::info!("end");
+                break
+            },
+            Err(TryRecvError::Empty) => log::debug!("empty"),
+            Err(TryRecvError::Disconnected) => break
+        }
     }
+    log::info!("END");
 }
 
 #[cfg(test)]

@@ -16,3 +16,7 @@ num-format = "0.4.0"              # A Rust crate for producing string-representa
 # A simple to use, efficient, and full-featured Command Line Argument Parser
 clap = { version = "3.0.14", features = ["derive"] }
 lazy_static = "1.4.0"
+
+tui = "0.17.0"                  # A library to build rich terminal user interfaces or dashboards 
+crossterm = "0.23.2"            # A crossplatform terminal library for manipulating terminals.
+tui-logger = "0.7.1"            # Logger with smart widget for the `tui` crate

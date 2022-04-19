@@ -4,6 +4,7 @@ mod dupemessage;
 mod scanner;
 
 pub mod receiver;
+pub mod ui;
 
 #[derive(Debug, Clone, Parser)]
 #[clap(author, version, about, long_about = None)]
