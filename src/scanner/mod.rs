@@ -1,4 +1,6 @@
 use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::{collections::BTreeMap, sync::mpsc::Sender};
 
 use log::{debug, info, trace};
@@ -17,11 +19,11 @@ const BLOCK_SIZE: usize = 1024;
 
 pub struct DupeScanner {
     tx: Sender<DupeMessage>,
-    config: Config,
+    config: Arc<Config>,
 }
 
 impl DupeScanner {
-    pub fn new(tx: Sender<DupeMessage>, config: Config) -> Self {
+    pub fn new(tx: Sender<DupeMessage>, config: Arc<Config>) -> Self {
         Self { tx, config }
     }
 }
@@ -31,7 +33,6 @@ impl DupeScanner {
         let groups = self.find_files();
         info!("{} total groups (by size)", groups.len());
         self.build_matches(groups);
-        self.tx.send(DupeMessage::End).unwrap();
     }
 
     fn send(&self, groups: Vec<FdupesGroup>) {
@@ -40,14 +41,14 @@ impl DupeScanner {
         }
     }
 
-    fn find_files(&self) -> BTreeMap<u64, Vec<String>> {
+    fn find_files(&self) -> BTreeMap<u64, Vec<PathBuf>> {
         info!(
             "find all files in {:?} (non-recursive: {}, include_empty: {})",
-            self.config.root, self.config.non_recursive, self.config.include_empty
+            self.config.roots, self.config.non_recursive, self.config.include_empty
         );
         let all_groups = self
             .config
-            .root
+            .roots
             .iter()
             .flat_map(|root| {
                 info!("scanning {:?}...", root);
@@ -59,14 +60,8 @@ impl DupeScanner {
                 }
             })
             .filter_map(|entry| entry.ok())
-            .filter(|entry| !entry.path().is_symlink())
             .filter(|entry| entry.path().is_file())
-            .map(|entry| {
-                (
-                    entry.metadata().unwrap().len(),
-                    entry.path().to_str().unwrap_or("").to_string(),
-                )
-            })
+            .map(|entry| (entry.metadata().unwrap().len(), entry.path().to_owned()))
             .fold(BTreeMap::new(), |mut acc, entry| {
                 let size = entry.0;
                 if size > 0 || self.config.include_empty {
@@ -81,7 +76,7 @@ impl DupeScanner {
             .collect()
     }
 
-    fn build_matches(&self, groups: BTreeMap<u64, Vec<String>>) {
+    fn build_matches(&self, groups: BTreeMap<u64, Vec<PathBuf>>) {
         for (size, filenames) in groups.iter().rev() {
             debug!("build matches {}: {} files", size, filenames.len());
             let mut result = Vec::new();
@@ -96,7 +91,7 @@ impl DupeScanner {
         }
     }
 
-    fn update_matches(&self, filename: &str, size: u64, result: &mut Vec<FdupesGroup>) {
+    fn update_matches(&self, filename: &Path, size: u64, result: &mut Vec<FdupesGroup>) {
         let mut file = FdupesGroup::new(filename, size);
         for r in result.iter_mut() {
             if let Ok(true) = self.matches(&mut file, r) {
@@ -124,7 +119,7 @@ impl DupeScanner {
 }
 #[derive(Debug, Default)]
 pub struct FdupesGroup {
-    pub filenames: Vec<String>,
+    pub filenames: Vec<PathBuf>,
     pub size: u64,
     partialcrc: Option<u16>,
     fullcrc: Option<u16>,
@@ -132,12 +127,12 @@ pub struct FdupesGroup {
 
 impl std::convert::Into<DupeMessage> for FdupesGroup {
     fn into(self) -> DupeMessage {
-        DupeMessage::Group(self.size, self.filenames)
+        (self.size, self.filenames)
     }
 }
 
 impl FdupesGroup {
-    pub fn new(file: &str, size: u64) -> Self {
+    pub fn new(file: &Path, size: u64) -> Self {
         let mut n = Self {
             size,
             ..Default::default()
@@ -146,7 +141,7 @@ impl FdupesGroup {
         n
     }
 
-    pub fn add(&mut self, file: &str) {
+    pub fn add(&mut self, file: &Path) {
         self.filenames.push(file.to_owned());
     }
 
@@ -249,12 +244,15 @@ mod tests {
     use super::FdupesGroup;
     use std::fs;
     use std::io::Write;
+    use std::path::Path;
 
-    const COLLISION_FILENAME: &str = "test_data/collision_scratch.txt";
-    const TEST_DATA1: &str = "test_data/file1.txt";
-    const TEST_DATA2: &str = "test_data/file2.txt";
+    lazy_static::lazy_static! {
+    static ref COLLISION_FILENAME: &'static Path = Path::new("test_data/collision_scratch.txt");
+    static ref TEST_DATA1: &'static Path = Path::new("test_data/file1.txt");
+    static ref TEST_DATA2: &'static Path = Path::new("test_data/file2.txt");
+    }
 
-    fn test_group(files: &[&str]) -> FdupesGroup {
+    fn test_group(files: &[&Path]) -> FdupesGroup {
         let mut group = FdupesGroup::default();
         for file in files {
             group.add(file);
@@ -265,21 +263,21 @@ mod tests {
 
     #[test]
     fn partialcrc_diff() {
-        let mut group1 = test_group(&[TEST_DATA1]);
-        let mut group2 = test_group(&[TEST_DATA2]);
+        let mut group1 = test_group(&[&TEST_DATA1]);
+        let mut group2 = test_group(&[&TEST_DATA2]);
 
         assert_eq!(group1.partialcrc().unwrap(), group2.partialcrc().unwrap());
     }
 
     #[test]
     fn fullcrc_diff() {
-        let mut group1 = test_group(&[TEST_DATA1]);
-        let mut group2 = test_group(&[TEST_DATA2]);
+        let mut group1 = test_group(&[&TEST_DATA1]);
+        let mut group2 = test_group(&[&TEST_DATA2]);
 
         assert_ne!(group1.fullcrc().unwrap(), group2.fullcrc().unwrap());
     }
 
-    fn generate_test_file(source: &str, target: &str, trail: u64) {
+    fn generate_test_file(source: &Path, target: &Path, trail: u64) {
         fs::copy(source, target).unwrap();
         let mut file = fs::OpenOptions::new()
             .write(true)
@@ -293,21 +291,21 @@ mod tests {
     fn collision() {
         let mut fullcrcs = std::collections::HashMap::new();
         for i in 0..=u64::MAX {
-            generate_test_file(TEST_DATA1, COLLISION_FILENAME, i);
-            let crc = test_group(&[COLLISION_FILENAME]).fullcrc().unwrap();
+            generate_test_file(&TEST_DATA1, &COLLISION_FILENAME, i);
+            let crc = test_group(&[&COLLISION_FILENAME]).fullcrc().unwrap();
             fullcrcs.entry(crc).or_insert_with(Vec::new).push(i);
             if fullcrcs.get(&crc).unwrap().len() > 1 {
                 break;
             }
         }
-        fs::remove_file(COLLISION_FILENAME).unwrap();
+        fs::remove_file(*COLLISION_FILENAME).unwrap();
         let (_crc, collision) = fullcrcs.iter().find(|(_crc, e)| e.len() > 1).unwrap();
 
-        let file_a = "test_data\\collision_file_a";
-        let file_b = "test_data\\collision_file_b";
+        let file_a = Path::new("test_data\\collision_file_a");
+        let file_b = Path::new("test_data\\collision_file_b");
 
-        generate_test_file(TEST_DATA1, file_a, *collision.get(0).unwrap());
-        generate_test_file(TEST_DATA1, file_b, *collision.get(1).unwrap());
+        generate_test_file(&TEST_DATA1, file_a, *collision.get(0).unwrap());
+        generate_test_file(&TEST_DATA1, file_b, *collision.get(1).unwrap());
 
         let mut group_a = test_group(&[file_a]);
         let mut group_b = test_group(&[file_b]);
