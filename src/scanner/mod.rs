@@ -59,7 +59,7 @@ impl DupeScanner {
                     walk.into_iter()
                 }
             })
-            .map(std::result::Result::unwrap)
+            .filter_map(|entry| entry.ok())
             .filter(|entry| entry.path().is_file())
             .map(|entry| (entry.metadata().unwrap().len(), entry.path().to_owned()))
             .fold(BTreeMap::new(), |mut acc, entry| {
