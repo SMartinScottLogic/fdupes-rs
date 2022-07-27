@@ -6,6 +6,8 @@ use chrono::Local;
 use clap::Parser;
 use env_logger::{Builder, Env};
 use fdupes::receiver::DupeGroupReceiver;
+use fdupes::{ExactGroupComparator, JsonGroupComparator};
+
 use std::io::prelude::*;
 
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -45,8 +47,14 @@ fn main() {
     let (tx, rx): (Sender<DupeMessage>, Receiver<DupeMessage>) = mpsc::channel();
 
     let mut receiver = setup(rx, &config);
-
-    let scanner = DupeScanner::new(tx, Arc::new(config.clone()));
+    let scanner = DupeScanner::new(
+        tx,
+        Arc::new(config.clone()),
+        vec![
+            Box::new(ExactGroupComparator::new()),
+            Box::new(JsonGroupComparator::new()),
+        ],
+    );
 
     let receiver = thread::spawn(move || receiver.run());
     let scanner = thread::spawn(move || scanner.find_groups());

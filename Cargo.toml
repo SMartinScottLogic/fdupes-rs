@@ -20,5 +20,5 @@ lazy_static = "1.4.0"
 crossterm = "0.26.0"            # A crossplatform terminal library for manipulating terminals.
 magic = "0.13.0"            # libmagic bindings
 
-serde_json = "1.0.79"                   # A JSON serialization file format
+serde_json = "1.0.82"                   # A JSON serialization file format
 bool_ext = "0.5.3"
