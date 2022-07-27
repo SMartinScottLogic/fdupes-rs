@@ -20,3 +20,7 @@ lazy_static = "1.4.0"
 tui = "0.17.0"                  # A library to build rich terminal user interfaces or dashboards 
 crossterm = "0.23.2"            # A crossplatform terminal library for manipulating terminals.
 tui-logger = "0.7.1"            # Logger with smart widget for the `tui` crate
+lazy_static = "1.4.0"
+magic = "0.12"            # libmagic bindings
+
+serde_json = "1.0.79"                   # A JSON serialization file format

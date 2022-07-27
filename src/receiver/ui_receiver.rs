@@ -8,7 +8,7 @@ use std::{
     fmt::Debug,
     io::{self, Stdout},
     process::Stdio,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, mpsc::TryRecvError},
     time::{Duration, Instant},
 };
 use tui::{
@@ -20,53 +20,22 @@ use tui::{
     Frame, Terminal,
 };
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget};
+use std::sync::mpsc::Receiver;
 
-pub struct UI {
-    terminal: Terminal<CrosstermBackend<Stdout>>,
+use crate::{Config, DupeMessage};
+
+use super::{DupeGroup, DupeGroupReceiver};
+
+pub struct UIReceiver {
+    rx: Receiver<DupeMessage>,
+    config: Config,
+
     contents: Vec<String>,
+    terminal: Terminal<CrosstermBackend<Stdout>>,
 }
 
-impl Drop for UI {
-    fn drop(&mut self) {
-        // restore terminal
-        disable_raw_mode().unwrap();
-        execute!(
-            self.terminal.backend_mut(),
-            LeaveAlternateScreen,
-            DisableMouseCapture
-        )
-        .unwrap();
-        self.terminal.show_cursor();
-    }
-}
-
-impl Default for UI {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl UI {
-    pub fn new() -> Self {
-        enable_raw_mode().unwrap();
-        let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, EnableMouseCapture).unwrap();
-        let backend = CrosstermBackend::new(stdout);
-        let terminal = Terminal::new(backend).unwrap();
-
-        Self {
-            terminal,
-            contents: vec![String::new()],
-        }
-    }
-
-    pub fn end(&mut self) {
-        self.contents.last_mut().and_then(|s| Some(s.push('#')));
-        log::info!("UI::END");
-    }
-
-    pub fn test_tui(&mut self) -> Result<(), io::Error> {
-        // setup terminal
+impl DupeGroupReceiver for UIReceiver {
+    fn run(&mut self) -> Result<(), io::Error> {
         let mut start_tick = Instant::now();
         let max_duration = Duration::from_millis(5000);
 
@@ -74,6 +43,15 @@ impl UI {
         let tick_rate = Duration::from_millis(250);
 
         loop {
+            match self.rx.try_recv() {
+                Ok((size, filenames)) => {
+                    log::info!("recv {} {:?}", size, filenames);
+                    //Self::handle_group(size, filenames, &self.config);
+                }
+                Err(TryRecvError::Empty) => log::trace!("empty"),
+                Err(TryRecvError::Disconnected) => break,
+            }
+
             let normalize_case = |mut key: crossterm::event::KeyEvent| {
                 let c = match key.code {
                     KeyCode::Char(c) => c,
@@ -152,9 +130,9 @@ impl UI {
                         .output_separator('|')
                         .output_timestamp(Some("%F %H:%M:%S%.3f".to_string()))
                         .output_level(Some(TuiLoggerLevelOutput::Long))
-                        .output_target(false)
-                        .output_file(false)
-                        .output_line(false)
+                        .output_target(true)
+                        .output_file(true)
+                        .output_line(true)
                         .style(Style::default().fg(Color::White).bg(Color::Black));
                     f.render_widget(tui_w, chunks[1]);
                 })?;
@@ -169,3 +147,30 @@ impl UI {
         Ok(())
     }
 }
+
+impl UIReceiver {
+    pub fn new(rx: Receiver<DupeMessage>, config: Config) -> Self {
+        enable_raw_mode().unwrap();
+        let mut stdout = io::stdout();
+        execute!(stdout, EnterAlternateScreen, EnableMouseCapture).unwrap();
+        let backend = CrosstermBackend::new(stdout);
+        let terminal = Terminal::new(backend).unwrap();
+
+        Self { rx, config, contents: Vec::new(), terminal }
+    }
+}
+
+impl Drop for UIReceiver {
+    fn drop(&mut self) {
+        // restore terminal
+        disable_raw_mode().unwrap();
+        execute!(
+            self.terminal.backend_mut(),
+            LeaveAlternateScreen,
+            DisableMouseCapture
+        )
+        .unwrap();
+        self.terminal.show_cursor();
+    }
+}
+

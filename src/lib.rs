@@ -26,6 +26,9 @@ pub struct Config {
     /// purge files into trash, rather than permanently.
     #[clap(short = 't', long)]
     pub trash: bool,
+    /// use classic display mode (non-tui).
+    #[clap(long)]
+    pub classic_mode: bool,
 }
 
 pub use crate::dupemessage::DupeMessage;

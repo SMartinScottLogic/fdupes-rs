@@ -1,9 +1,12 @@
+use std::error::Error;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::mpsc::SendError;
 use std::{collections::BTreeMap, sync::mpsc::Sender};
 
 use log::{debug, info, trace};
+use magic::{CookieFlags, flags, Cookie};
 use std::io::prelude::*;
 use walkdir::WalkDir;
 
@@ -35,10 +38,15 @@ impl DupeScanner {
         self.build_matches(groups);
     }
 
-    fn send(&self, groups: Vec<FdupesGroup>) {
+    fn send(&self, groups: Vec<FdupesGroup>) -> Result<(), io::Error> {
         for bucket in groups {
-            self.tx.send(bucket.into()).unwrap();
+            if bucket.filenames.len() > 1 {
+                // TODO: Handle send failures
+                log::debug!("send: {:?}", bucket);
+            self.tx.send(bucket.into());
+            }
         }
+        Ok(())
     }
 
     fn find_files(&self) -> BTreeMap<u64, Vec<PathBuf>> {
@@ -76,7 +84,7 @@ impl DupeScanner {
             .collect()
     }
 
-    fn build_matches(&self, groups: BTreeMap<u64, Vec<PathBuf>>) {
+    fn build_matches(&self, groups: BTreeMap<u64, Vec<PathBuf>>) -> Result<(), Box<dyn std::error::Error>> {
         for (size, filenames) in groups.iter().rev() {
             debug!("build matches {}: {} files", size, filenames.len());
             let mut result = Vec::new();
@@ -87,8 +95,9 @@ impl DupeScanner {
                 " => {:?}",
                 result.iter().map(|r| r.filenames.len()).collect::<Vec<_>>()
             );
-            self.send(result);
+            self.send(result)?;
         }
+        Ok(())
     }
 
     fn update_matches(&self, filename: &Path, size: u64, result: &mut Vec<FdupesGroup>) {
