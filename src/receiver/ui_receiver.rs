@@ -3,32 +3,29 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use std::sync::mpsc::Receiver;
 use std::{
-    error::Error,
-    fmt::Debug,
     io::{self, Stdout},
-    process::Stdio,
-    sync::{Arc, Mutex, mpsc::TryRecvError},
+    sync::mpsc::TryRecvError,
     time::{Duration, Instant},
 };
 use tui::{
-    backend::{Backend, CrosstermBackend},
-    layout::{Alignment, Constraint, Direction, Layout},
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
-    Frame, Terminal,
+    widgets::{Block, Borders, Paragraph, Wrap},
+    Terminal,
 };
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget};
-use std::sync::mpsc::Receiver;
 
 use crate::{Config, DupeMessage};
 
-use super::{DupeGroup, DupeGroupReceiver};
+use super::DupeGroupReceiver;
 
 pub struct UIReceiver {
     rx: Receiver<DupeMessage>,
-    config: Config,
+    //config: Config,
 
     contents: Vec<String>,
     terminal: Terminal<CrosstermBackend<Stdout>>,
@@ -36,15 +33,12 @@ pub struct UIReceiver {
 
 impl DupeGroupReceiver for UIReceiver {
     fn run(&mut self) -> Result<(), io::Error> {
-        let mut start_tick = Instant::now();
-        let max_duration = Duration::from_millis(5000);
-
         let mut last_tick = Instant::now();
         let tick_rate = Duration::from_millis(250);
 
         loop {
             match self.rx.try_recv() {
-                Ok((size, filenames)) => {
+                Ok((size, _total, _id, filenames)) => {
                     log::info!("recv {} {:?}", size, filenames);
                     //Self::handle_group(size, filenames, &self.config);
                 }
@@ -82,14 +76,25 @@ impl DupeGroupReceiver for UIReceiver {
                         log::info!("key: {:?}", key.code);
                         let key = normalize_case(key);
                         if let KeyCode::Char(c) = key.code {
-                            self.contents.last_mut().and_then(|s| Some(s.push(c)));
+                            if let Some(s) = self.contents.last_mut() { 
+                                s.push(c)
+                            }
                         }
                     }
                     Event::Mouse(event) => {
-                        log::info!("mouse: {:?}", event);
+                        log::info!("mouse: {event:?}");
                     }
                     Event::Resize(x, y) => {
-                        log::info!("resize: {} {}", x, y);
+                        log::info!("resize: {x} {y}");
+                    }
+                    Event::FocusGained => {
+                        log::info!("focus gained");
+                    }
+                    Event::FocusLost => {
+                        log::info!("focus gained");
+                    }
+                    Event::Paste(p) => {
+                        log::info!("paste {p}");
                     }
                 }
             }
@@ -149,14 +154,19 @@ impl DupeGroupReceiver for UIReceiver {
 }
 
 impl UIReceiver {
-    pub fn new(rx: Receiver<DupeMessage>, config: Config) -> Self {
+    pub fn new(rx: Receiver<DupeMessage>, _config: Config) -> Self {
         enable_raw_mode().unwrap();
         let mut stdout = io::stdout();
         execute!(stdout, EnterAlternateScreen, EnableMouseCapture).unwrap();
         let backend = CrosstermBackend::new(stdout);
         let terminal = Terminal::new(backend).unwrap();
 
-        Self { rx, config, contents: Vec::new(), terminal }
+        Self {
+            rx,
+            //config,
+            contents: Vec::new(),
+            terminal,
+        }
     }
 }
 
@@ -170,7 +180,6 @@ impl Drop for UIReceiver {
             DisableMouseCapture
         )
         .unwrap();
-        self.terminal.show_cursor();
+        self.terminal.show_cursor().unwrap();
     }
 }
-

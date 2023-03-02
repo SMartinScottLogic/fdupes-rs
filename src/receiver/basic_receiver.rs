@@ -4,10 +4,10 @@ use std::path::PathBuf;
 use std::{
     io,
     io::Write,
-    sync::mpsc::{Receiver, TryRecvError},
+    sync::mpsc::Receiver,
 };
 
-use super::{DupeGroup, DupeGroupReceiver, Mark, mark_group};
+use super::{mark_group, DupeGroup, DupeGroupReceiver, Mark};
 
 pub struct BasicReceiver {
     rx: Receiver<DupeMessage>,
@@ -16,9 +16,9 @@ pub struct BasicReceiver {
 
 impl DupeGroupReceiver for BasicReceiver {
     fn run(&mut self) -> Result<(), std::io::Error> {
-        while let Ok((size, filenames)) = self.rx.recv() {
+        while let Ok((size, total, id, filenames)) = self.rx.recv() {
             log::debug!("{} {:?}", size, filenames);
-            Self::handle_group(size, filenames, &self.config);
+            Self::handle_group(size, id, total, filenames, &self.config);
         }
         /*
         loop {
@@ -70,7 +70,7 @@ impl BasicReceiver {
         done
     }
 
-    fn handle_group(size: u64, filenames: Vec<PathBuf>, config: &Config) {
+    fn handle_group(size: u64, id: usize, total: usize, filenames: Vec<PathBuf>, config: &Config) {
         if filenames.len() > 1 {
             for (id, filename) in filenames.iter().enumerate() {
                 println!("[{}] {:?} (W)", id + 1, filename);
@@ -80,7 +80,12 @@ impl BasicReceiver {
                     .iter()
                     .map(|f| (f, Mark::Purge))
                     .collect::<DupeGroup>();
-                print!("Preserve files [1 - {}, all, none, quit]", filenames.len());
+                print!(
+                    "({}/{}) Preserve files [1 - {}, all, none, quit]",
+                    id,
+                    total,
+                    filenames.len()
+                );
                 if config.show_sizes {
                     if size == 1 {
                         print!(" ({} byte each)", size.to_formatted_string(&Locale::en_GB));
@@ -105,9 +110,11 @@ impl BasicReceiver {
             for (filename, mark) in files {
                 if Mark::Purge == mark {
                     if config.trash {
-                        trash::delete(filename).unwrap();
-                    } else {
-                        std::fs::remove_file(filename).unwrap();
+                        if let Err(e) = trash::delete(filename) {
+                            eprintln!("Failed to put {filename:?} in trash: {e}");
+                        }
+                    } else if let Err(e) = std::fs::remove_file(filename) {
+                        eprintln!("Failed to delete {filename:?}: {e}");
                     }
                 }
             }
@@ -135,7 +142,7 @@ mod tests {
         let done = BasicReceiver::process_input("", &mut files);
         assert!(!done);
         for (file, mark) in files {
-            assert!(mark == Mark::Purge, "{:?} should be purged", file);
+            assert!(mark == Mark::Purge, "{file:?} should be purged");
         }
     }
 
@@ -149,7 +156,7 @@ mod tests {
         let done = BasicReceiver::process_input("all", &mut files);
         assert!(done);
         for (file, mark) in files {
-            assert!(mark == Mark::Keep, "{:?} should be retained", file);
+            assert!(mark == Mark::Keep, "{file:?} should be retained");
         }
     }
 
@@ -163,7 +170,7 @@ mod tests {
         let done = BasicReceiver::process_input("none", &mut files);
         assert!(done);
         for (file, mark) in files {
-            assert!(mark == Mark::Purge, "{:?} should be purged", file);
+            assert!(mark == Mark::Purge, "{file:?} should be purged");
         }
     }
 
@@ -178,9 +185,9 @@ mod tests {
         assert!(done);
         for (file, mark) in files {
             if *file == *FILE2 {
-                assert!(mark == Mark::Keep, "{:?} should be retained", file);
+                assert!(mark == Mark::Keep, "{file:?} should be retained");
             } else {
-                assert!(mark == Mark::Purge, "{:?} should be purged", file);
+                assert!(mark == Mark::Purge, "{file:?} should be purged");
             }
         }
     }

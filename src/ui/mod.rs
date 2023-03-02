@@ -4,20 +4,16 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use std::{
-    error::Error,
-    fmt::Debug,
     io::{self, Stdout},
-    process::Stdio,
-    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use tui::{
-    backend::{Backend, CrosstermBackend},
-    layout::{Alignment, Constraint, Direction, Layout},
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
-    Frame, Terminal,
+    widgets::{Block, Borders, Paragraph, Wrap},
+    Terminal,
 };
 use tui_logger::{TuiLoggerLevelOutput, TuiLoggerWidget};
 
@@ -36,7 +32,7 @@ impl Drop for UI {
             DisableMouseCapture
         )
         .unwrap();
-        self.terminal.show_cursor();
+        self.terminal.show_cursor().unwrap();
     }
 }
 
@@ -61,14 +57,14 @@ impl UI {
     }
 
     pub fn end(&mut self) {
-        self.contents.last_mut().and_then(|s| Some(s.push('#')));
+        if let Some(s) = self.contents.last_mut() { 
+            s.push('#')
+        }
         log::info!("UI::END");
     }
 
     pub fn test_tui(&mut self) -> Result<(), io::Error> {
         // setup terminal
-        let mut start_tick = Instant::now();
-        let max_duration = Duration::from_millis(5000);
 
         let mut last_tick = Instant::now();
         let tick_rate = Duration::from_millis(250);
@@ -104,14 +100,25 @@ impl UI {
                         log::info!("key: {:?}", key.code);
                         let key = normalize_case(key);
                         if let KeyCode::Char(c) = key.code {
-                            self.contents.last_mut().and_then(|s| Some(s.push(c)));
+                            if let Some(s) = self.contents.last_mut() { 
+                                s.push(c)
+                            }
                         }
                     }
                     Event::Mouse(event) => {
-                        log::info!("mouse: {:?}", event);
+                        log::info!("mouse: {event:?}");
                     }
                     Event::Resize(x, y) => {
-                        log::info!("resize: {} {}", x, y);
+                        log::info!("resize: {x} {y}");
+                    }
+                    Event::FocusGained => {
+                        log::info!("focus gained");
+                    }
+                    Event::FocusLost => {
+                        log::info!("focus gained");
+                    }
+                    Event::Paste(p) => {
+                        log::info!("paste {p}");
                     }
                 }
             }

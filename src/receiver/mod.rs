@@ -1,9 +1,4 @@
-use num_format::{Locale, ToFormattedString};
 use std::path::PathBuf;
-
-use log::error;
-use num_format::{Locale, ToFormattedString};
-use std::{io, io::Write, sync::{mpsc::{Receiver, TryRecvError}, Arc, Mutex}};
 
 #[derive(PartialEq, Copy, Clone)]
 enum Mark {
@@ -19,7 +14,7 @@ mod ui_receiver;
 pub use basic_receiver::BasicReceiver;
 pub use ui_receiver::UIReceiver;
 
-pub trait DupeGroupReceiver : Send {
+pub trait DupeGroupReceiver: Send {
     fn run(&mut self) -> Result<(), std::io::Error>;
 }
 
@@ -48,7 +43,7 @@ mod tests {
         ];
         mark_group(&mut files, Mark::Purge);
         for (file, mark) in files {
-            assert!(mark == Mark::Purge, "{:?} should be purged", file);
+            assert!(mark == Mark::Purge, "{file:?} should be purged");
         }
     }
 
@@ -61,7 +56,7 @@ mod tests {
         ];
         mark_group(&mut files, Mark::Keep);
         for (file, mark) in files {
-            assert!(mark == Mark::Keep, "{:?} should be retained", file);
+            assert!(mark == Mark::Keep, "{file:?} should be retained");
         }
     }
 }

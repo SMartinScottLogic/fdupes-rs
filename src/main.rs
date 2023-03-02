@@ -3,17 +3,17 @@ extern crate env_logger;
 extern crate log;
 
 use chrono::Local;
-use clap::StructOpt;
+use clap::Parser;
 use env_logger::{Builder, Env};
 use fdupes::receiver::DupeGroupReceiver;
 use std::io::prelude::*;
 
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 
-use fdupes::{Config, DupeMessage, DupeScanner};
 use fdupes::receiver::*;
+use fdupes::{Config, DupeMessage, DupeScanner};
 
 fn setup_logger() {
     let env = Env::default().filter_or("RUST_LOG", "info");
@@ -30,17 +30,17 @@ fn setup_logger() {
         .init();
 }
 
-fn setup(rx: Receiver<(u64, Vec<std::path::PathBuf>)>, config: &Config) -> Box<dyn DupeGroupReceiver> {
+fn setup(rx: Receiver<DupeMessage>, config: &Config) -> Box<dyn DupeGroupReceiver> {
     if config.classic_mode {
-            setup_logger();
-            Box::new(BasicReceiver::new(rx, config.to_owned()))
+        setup_logger();
+        Box::new(BasicReceiver::new(rx, config.to_owned()))
     } else {
-            tui_logger::init_logger(log::LevelFilter::Trace).unwrap();
-            tui_logger::set_default_level(log::LevelFilter::Info);
-            tui_logger::set_level_for_target("fdupes::scanner", log::LevelFilter::Debug);
-            tui_logger::set_level_for_target("fdupes::receiver::ui_receiver", log::LevelFilter::Debug);
-            Box::new(UIReceiver::new(rx, config.to_owned()))
-        }
+        tui_logger::init_logger(log::LevelFilter::Trace).unwrap();
+        tui_logger::set_default_level(log::LevelFilter::Info);
+        tui_logger::set_level_for_target("fdupes::scanner", log::LevelFilter::Debug);
+        tui_logger::set_level_for_target("fdupes::receiver::ui_receiver", log::LevelFilter::Debug);
+        Box::new(UIReceiver::new(rx, config.to_owned()))
+    }
 }
 
 fn main() {
@@ -57,6 +57,6 @@ fn main() {
     let receiver = thread::spawn(move || receiver.run());
     let scanner = thread::spawn(move || scanner.find_groups());
 
-    receiver.join().unwrap();
+    receiver.join().unwrap().unwrap();
     scanner.join().unwrap();
 }
