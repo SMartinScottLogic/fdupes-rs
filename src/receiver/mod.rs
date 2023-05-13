@@ -9,10 +9,8 @@ enum Mark {
 type DupeGroup<'a> = Vec<(&'a PathBuf, Mark)>;
 
 mod basic_receiver;
-mod ui_receiver;
 
 pub use basic_receiver::BasicReceiver;
-pub use ui_receiver::UIReceiver;
 
 pub trait DupeGroupReceiver: Send {
     fn run(&mut self) -> Result<(), std::io::Error>;

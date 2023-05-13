@@ -1,11 +1,7 @@
 use crate::{Config, DupeMessage};
 use num_format::{Locale, ToFormattedString};
 use std::path::PathBuf;
-use std::{
-    io,
-    io::Write,
-    sync::mpsc::Receiver,
-};
+use std::{io, io::Write, sync::mpsc::Receiver};
 
 use super::{mark_group, DupeGroup, DupeGroupReceiver, Mark};
 

@@ -35,11 +35,7 @@ fn setup(rx: Receiver<DupeMessage>, config: &Config) -> Box<dyn DupeGroupReceive
         setup_logger();
         Box::new(BasicReceiver::new(rx, config.to_owned()))
     } else {
-        tui_logger::init_logger(log::LevelFilter::Trace).unwrap();
-        tui_logger::set_default_level(log::LevelFilter::Info);
-        tui_logger::set_level_for_target("fdupes::scanner", log::LevelFilter::Debug);
-        tui_logger::set_level_for_target("fdupes::receiver::ui_receiver", log::LevelFilter::Debug);
-        Box::new(UIReceiver::new(rx, config.to_owned()))
+        panic!()
     }
 }
 
@@ -47,8 +43,6 @@ fn main() {
     let config = Config::parse();
 
     let (tx, rx): (Sender<DupeMessage>, Receiver<DupeMessage>) = mpsc::channel();
-
-    //let mut ui = Arc::new(Mutex::new(fdupes::ui::UI::new()));
 
     let mut receiver = setup(rx, &config);
 

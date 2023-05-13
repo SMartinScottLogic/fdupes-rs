@@ -4,7 +4,6 @@ mod dupemessage;
 mod scanner;
 
 pub mod receiver;
-pub mod ui;
 
 #[derive(Debug, Clone, Parser)]
 #[clap(author, version, about, long_about = None)]
@@ -27,7 +26,7 @@ pub struct Config {
     #[clap(short = 't', long)]
     pub trash: bool,
     /// use classic display mode (non-tui).
-    #[clap(long)]
+    #[clap(long, default_value_t = true)]
     pub classic_mode: bool,
 }
 
