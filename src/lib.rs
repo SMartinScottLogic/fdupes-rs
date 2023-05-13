@@ -13,9 +13,9 @@ pub struct Config {
     /// Only find duplicates immediately within supplied directories.
     #[clap(short, long)]
     pub non_recursive: bool,
-    /// Should empty files be considered duplicates.
-    #[clap(short = '0', long)]
-    pub include_empty: bool,
+    /// Minimum file size to consider
+    #[clap(short = 'm', long, default_value_t = 0)]
+    pub min_size: u64,
     /// Show sizes of files within duplicate groups.
     #[clap(short = 'S', long)]
     pub show_sizes: bool,
@@ -25,6 +25,9 @@ pub struct Config {
     /// purge files into trash, rather than permanently.
     #[clap(short = 't', long)]
     pub trash: bool,
+    /// use classic display mode (non-tui).
+    #[clap(long, default_value_t = true)]
+    pub classic_mode: bool,
 }
 
 pub use crate::dupemessage::DupeMessage;

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{collections::BTreeMap, sync::mpsc::Sender};
 
+use bool_ext::BoolExt;
 use log::{debug, info, trace};
 use std::io::prelude::*;
 use walkdir::WalkDir;
@@ -32,52 +33,92 @@ impl DupeScanner {
     pub fn find_groups(&self) {
         let groups = self.find_files();
         info!("{} total groups (by size)", groups.len());
-        self.build_matches(groups);
+        self.build_matches(groups).unwrap();
     }
 
-    fn send(&self, groups: Vec<FdupesGroup>) {
+    fn send(&self, (id, total, groups): (usize, usize, Vec<FdupesGroup>)) -> Result<(), io::Error> {
         for bucket in groups {
-            self.tx.send(bucket.into()).unwrap();
+            if bucket.filenames.len() > 1 {
+                // TODO: Handle send failures
+                log::debug!("send: {:?}", bucket);
+                self.tx.send(bucket.into_dupe_message(total, id)).unwrap();
+            }
         }
+        Ok(())
+    }
+
+    fn find_files_root(
+        root: String,
+        non_recursive: bool,
+        min_size: u64,
+    ) -> std::thread::JoinHandle<std::collections::BTreeMap<u64, std::vec::Vec<std::path::PathBuf>>>
+    {
+        std::thread::spawn(move || {
+            info!("scanning {:?}...", root);
+            let r = WalkDir::new(&root)
+                .max_depth(non_recursive.map(usize::MAX, 1))
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.path().is_file())
+                .map(|entry| (entry.metadata().unwrap().len(), entry.path().to_owned()))
+                .fold(BTreeMap::new(), |mut acc, entry| {
+                    let size = entry.0;
+                    if size >= min_size {
+                        acc.entry(size).or_insert_with(Vec::new).push(entry.1);
+                    }
+                    acc
+                });
+            info!("scanning {:?} complete.", root);
+            r
+        })
     }
 
     fn find_files(&self) -> BTreeMap<u64, Vec<PathBuf>> {
         info!(
-            "find all files in {:?} (non-recursive: {}, include_empty: {})",
-            self.config.roots, self.config.non_recursive, self.config.include_empty
+            "find all files in {:?} (non-recursive: {}, min_size: {})",
+            self.config.roots, self.config.non_recursive, self.config.min_size
         );
+
         let all_groups = self
             .config
             .roots
             .iter()
-            .flat_map(|root| {
-                info!("scanning {:?}...", root);
-                let walk = WalkDir::new(root);
-                if self.config.non_recursive {
-                    walk.max_depth(1).into_iter()
-                } else {
-                    walk.into_iter()
-                }
+            .map(|r| {
+                Self::find_files_root(
+                    r.to_owned(),
+                    self.config.non_recursive,
+                    self.config.min_size,
+                )
             })
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| entry.path().is_file())
-            .map(|entry| (entry.metadata().unwrap().len(), entry.path().to_owned()))
-            .fold(BTreeMap::new(), |mut acc, entry| {
-                let size = entry.0;
-                if size > 0 || self.config.include_empty {
-                    acc.entry(size).or_insert_with(Vec::new).push(entry.1);
+            // Collect to trigger thread spawning
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(|h| h.join().unwrap())
+            .fold(BTreeMap::new(), |mut acc, v| {
+                for (size, mut files) in v {
+                    let entry = acc.entry(size).or_insert_with(Vec::new);
+                    entry.append(&mut files);
                 }
                 acc
             });
         info!("{} non-unique groups (by size)", all_groups.len());
+        if log::log_enabled!(log::Level::Debug) {
+            for (size, files) in &all_groups {
+                debug!("group {size} => {files:?}");
+            }
+        }
         all_groups
             .into_iter()
             .filter(|(_size, files)| files.len() > 1)
             .collect()
     }
 
-    fn build_matches(&self, groups: BTreeMap<u64, Vec<PathBuf>>) {
-        for (size, filenames) in groups.iter().rev() {
+    fn build_matches(
+        &self,
+        groups: BTreeMap<u64, Vec<PathBuf>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let total = groups.len();
+        for (id, (size, filenames)) in groups.iter().rev().enumerate() {
             debug!("build matches {}: {} files", size, filenames.len());
             let mut result = Vec::new();
             for filename in filenames {
@@ -87,8 +128,9 @@ impl DupeScanner {
                 " => {:?}",
                 result.iter().map(|r| r.filenames.len()).collect::<Vec<_>>()
             );
-            self.send(result);
+            self.send((id, total, result))?;
         }
+        Ok(())
     }
 
     fn update_matches(&self, filename: &Path, size: u64, result: &mut Vec<FdupesGroup>) {
@@ -125,13 +167,11 @@ pub struct FdupesGroup {
     fullcrc: Option<u16>,
 }
 
-impl std::convert::Into<DupeMessage> for FdupesGroup {
-    fn into(self) -> DupeMessage {
-        (self.size, self.filenames)
-    }
-}
-
 impl FdupesGroup {
+    pub fn into_dupe_message(self, total: usize, id: usize) -> DupeMessage {
+        (self.size, total, id, self.filenames)
+    }
+
     pub fn new(file: &Path, size: u64) -> Self {
         let mut n = Self {
             size,
@@ -199,7 +239,7 @@ impl FdupesGroup {
 
 impl PartialEq<FdupesGroup> for FdupesGroup {
     fn eq(&self, other: &FdupesGroup) -> bool {
-        let mut reader_a = match File::open(&self.filenames.get(0).unwrap()) {
+        let mut reader_a = match File::open(self.filenames.get(0).unwrap()) {
             Ok(f) => BufReader::new(f),
             _ => return false,
         };
@@ -284,7 +324,7 @@ mod tests {
             .append(true)
             .open(target)
             .unwrap();
-        write!(&mut file, "{:08}", trail).unwrap();
+        write!(&mut file, "{trail:08}").unwrap();
     }
 
     #[test]
@@ -304,7 +344,7 @@ mod tests {
         let file_a = Path::new("test_data\\collision_file_a");
         let file_b = Path::new("test_data\\collision_file_b");
 
-        generate_test_file(&TEST_DATA1, file_a, *collision.get(0).unwrap());
+        generate_test_file(&TEST_DATA1, file_a, *collision.first().unwrap());
         generate_test_file(&TEST_DATA1, file_b, *collision.get(1).unwrap());
 
         let mut group_a = test_group(&[file_a]);
