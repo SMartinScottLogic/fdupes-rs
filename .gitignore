@@ -2,3 +2,4 @@
 /fdupes
 /Cargo.lock
 *.snap
+/temp/

@@ -2,6 +2,7 @@ use crate::{Config, DupeMessage};
 use num_format::{Locale, ToFormattedString};
 use std::path::PathBuf;
 use std::{io, io::Write, sync::mpsc::Receiver};
+use tracing::debug;
 
 use super::{mark_group, DupeGroup, DupeGroupReceiver, Mark};
 
@@ -13,7 +14,7 @@ pub struct BasicReceiver {
 impl DupeGroupReceiver for BasicReceiver {
     fn run(&mut self) -> Result<(), std::io::Error> {
         while let Ok((size, total, id, filenames)) = self.rx.recv() {
-            log::debug!("{} {:?}", size, filenames);
+            debug!("{} {:?}", size, filenames);
             Self::handle_group(size, id, total, filenames, &self.config);
         }
         /*

@@ -1,32 +1,30 @@
 extern crate chrono;
-extern crate env_logger;
-extern crate log;
 
-use chrono::Local;
 use clap::Parser;
-use env_logger::{Builder, Env};
 use fdupes::receiver::DupeGroupReceiver;
-use std::io::prelude::*;
+use fdupes::{ExactGroupComparator, JsonGroupComparator};
+use tracing::Level;
+use tracing_subscriber::fmt::format::FmtSpan;
 
+use std::str::FromStr;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
-use std::thread;
+use std::{env, thread};
 
 use fdupes::receiver::*;
 use fdupes::{Config, DupeMessage, DupeScanner};
 
 fn setup_logger() {
-    let env = Env::default().filter_or("RUST_LOG", "info");
-    Builder::from_env(env)
-        .format(|buf, record| {
-            writeln!(
-                buf,
-                "{} [{}] - {}",
-                Local::now().format("%Y-%m-%dT%H:%M:%S"),
-                record.level(),
-                record.args()
-            )
-        })
+    // install global collector configured based on RUST_LOG env var.
+    let level =
+        env::var("RUST_LOG").map_or(Level::INFO, |v| Level::from_str(&v).unwrap_or(Level::INFO));
+    tracing_subscriber::fmt()
+        .with_span_events(FmtSpan::ACTIVE)
+        .with_thread_ids(true)
+        .with_thread_names(true)
+        .with_file(true)
+        .with_line_number(true)
+        .with_max_level(level)
         .init();
 }
 
@@ -45,8 +43,14 @@ fn main() {
     let (tx, rx): (Sender<DupeMessage>, Receiver<DupeMessage>) = mpsc::channel();
 
     let mut receiver = setup(rx, &config);
-
-    let scanner = DupeScanner::new(tx, Arc::new(config.clone()));
+    let scanner = DupeScanner::new(
+        tx,
+        Arc::new(config.clone()),
+        vec![
+            Box::new(ExactGroupComparator::new()),
+            Box::new(JsonGroupComparator::new()),
+        ],
+    );
 
     let receiver = thread::spawn(move || receiver.run());
     let scanner = thread::spawn(move || scanner.find_groups());
