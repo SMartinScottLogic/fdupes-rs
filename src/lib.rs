@@ -32,6 +32,4 @@ pub struct Config {
 
 pub use crate::dupemessage::DupeMessage;
 pub use crate::scanner::DupeScanner;
-pub use crate::scanner::ExactGroupComparator;
-pub use crate::scanner::GroupComparator;
-pub use crate::scanner::JsonGroupComparator;
+pub use crate::scanner::group_comparator::{GroupComparator, ExactGroupComparator, JsonGroupComparator};
