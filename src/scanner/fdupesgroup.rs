@@ -49,8 +49,7 @@ impl<'a> FdupesGroup<'a> {
                 .filenames
                 .get(0)
                 .ok_or_else(|| std::io::Error::new(ErrorKind::Other, "No files in group"))?;
-            let mut f = self.comparator.open(filename.to_str().unwrap())?;
-            //let mut f = File::open(filename)?;
+            let mut f = self.comparator.open(filename)?;
             let mut buffer = vec![0_u8; std::cmp::min(self.size, BLOCK_SIZE as u64) as usize];
 
             f.reader.read_exact(&mut buffer[..])?;
@@ -71,9 +70,7 @@ impl<'a> FdupesGroup<'a> {
                 .filenames
                 .get(0)
                 .ok_or_else(|| std::io::Error::new(ErrorKind::Other, "No files in group"))?;
-            let mut f = self.comparator.open(filename.to_str().unwrap())?;
-            //let f = File::open(filename)?;
-            //let mut reader = BufReader::new(f);
+            let mut f = self.comparator.open(filename)?;
             let mut digest = crc16::Digest::new(crc16::X25);
 
             loop {
@@ -99,13 +96,8 @@ impl<'a> FdupesGroup<'a> {
             None => return Err(io::Error::new(io::ErrorKind::NotFound, "empty group")),
             Some(name) => name,
         };
-        let filename = match filename.to_str() {
-            None => return Err(io::Error::new(io::ErrorKind::InvalidData, format!("Unrepresentable file: {:?}", filename))),
-            Some(name) => name,
-        };
         self.comparator.open(filename)
         .map(|v| {v.reader})
-        //self.comparator.open(self.filenames.get(0).unwrap().to_str().unwrap()).unwrap().reader
     }
 }
 
@@ -121,10 +113,6 @@ impl<'a> PartialEq<Self> for FdupesGroup<'a> {
                 return false
             },
         };
-        //let mut reader_a = match File::open(self.filenames.get(0).unwrap()) {
-        //    Ok(f) => BufReader::new(f),
-        //    _ => return false,
-        //};
         let mut reader_b = match other.open() {
             Ok(reader) => reader,
             Err(e) => {
@@ -132,10 +120,6 @@ impl<'a> PartialEq<Self> for FdupesGroup<'a> {
                 return false
             }
         };
-        // let mut reader_b = match File::open(other.filenames.get(0).unwrap()) {
-        //     Ok(f) => BufReader::new(f),
-        //     _ => return false,
-        // };
 
         loop {
             let buf_a = match reader_a.fill_buf() {

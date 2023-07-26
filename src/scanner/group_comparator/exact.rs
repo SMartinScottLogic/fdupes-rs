@@ -1,6 +1,6 @@
 use std::{path::Path, io::{self, BufReader}, fs::File};
 
-use tracing::debug;
+use tracing::trace;
 
 use super::{GroupComparator,GroupReader};
 
@@ -18,11 +18,11 @@ impl GroupComparator for ExactGroupComparator {
 
     fn can_analyse(&self, path: &Path) -> bool {
         let can_analyse = true;
-        debug!(path = debug(path), can_analyse, "can_analyse");
+        trace!(path = debug(path), can_analyse, "can_analyse");
         can_analyse
     }
 
-    fn open(&self, path: &str) -> io::Result<GroupReader> {
+    fn open(&self, path: &dyn AsRef<Path>) -> io::Result<GroupReader> {
         File::open(path).map(|f| GroupReader {
             reader: Box::new(BufReader::new(f)),
         })

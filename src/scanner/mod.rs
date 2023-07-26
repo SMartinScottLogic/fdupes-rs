@@ -110,6 +110,8 @@ impl DupeScanner {
                     self.config.min_size,
                 )
             })
+            .collect::<Vec<_>>()
+            .into_iter()
             .filter_map(|h| h.join().ok())
             .flatten()
             .fold(BTreeMap::new(), |mut acc, (raw_size, path)| {
@@ -172,7 +174,6 @@ impl DupeScanner {
         result: &mut Vec<FdupesGroup<'a>>,
     ) {
         let comparator = self.group_comparators.get(comparator_name).unwrap();
-        //panic!("Update matches for {comparator_name}: {comparator:?}");
         //TODO Restriction to comparator logics
         let mut file = FdupesGroup::new(filename, size, comparator.as_ref());
         for r in result
