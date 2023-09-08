@@ -30,6 +30,14 @@ pub struct Config {
     pub classic_mode: bool,
 }
 
+#[derive(Debug)]
+pub struct DbMessage {
+    pub filename: String,
+    pub size: usize,
+    pub partialcrc: Option<u16>,
+    pub fullcrc: Option<u16>,
+}
+
 pub use crate::dupemessage::DupeMessage;
 pub use crate::scanner::DupeScanner;
 pub use crate::scanner::group_comparator::{GroupComparator, ExactGroupComparator, JsonGroupComparator};

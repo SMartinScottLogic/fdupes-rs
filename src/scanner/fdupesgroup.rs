@@ -3,26 +3,31 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crc::{crc16, Hasher16};
 use memcmp::Memcmp;
-use tracing::debug;
+use tracing::{debug, error, trace};
 use crate::scanner::group_comparator::GroupComparator;
 use crate::DupeMessage;
 
 const BLOCK_SIZE: usize = 1024;
 
 #[derive(Debug)]
+enum TriOption<T> {
+    None,
+    Definite(T),
+    Possible(T),
+}
+#[derive(Debug)]
 pub struct FdupesGroup<'a> {
     pub filenames: Vec<PathBuf>,
     pub size: u64,
     pub comparator: &'a dyn GroupComparator,
-    partialcrc: Option<u16>,
-    fullcrc: Option<u16>,
+    partialcrc: TriOption<u16>,
+    fullcrc: TriOption<u16>,
 }
 
 impl<'a> FdupesGroup<'a> {
     pub fn into_dupe_message(self, total: usize, id: usize) -> DupeMessage {
-        (self.size, total, id, self.filenames)
+        (self.size, total, id, self.filenames.clone())
     }
 
     pub fn new(file: &Path, size: u64, comparator: &'a dyn GroupComparator) -> Self {
@@ -30,8 +35,8 @@ impl<'a> FdupesGroup<'a> {
             filenames: Vec::default(),
             size,
             comparator,
-            partialcrc: None,
-            fullcrc: None,
+            partialcrc: TriOption::None,
+            fullcrc: TriOption::None,
         };
         n.add(file);
         n
@@ -42,7 +47,7 @@ impl<'a> FdupesGroup<'a> {
     }
 
     pub fn partialcrc(&mut self) -> io::Result<u16> {
-        if let Some(crc) = self.partialcrc {
+        if let TriOption::Definite(crc) = self.partialcrc {
             Ok(crc)
         } else {
             let filename = self
@@ -50,21 +55,20 @@ impl<'a> FdupesGroup<'a> {
                 .get(0)
                 .ok_or_else(|| std::io::Error::new(ErrorKind::Other, "No files in group"))?;
             let mut f = self.comparator.open(filename.to_str().unwrap())?;
-            //let mut f = File::open(filename)?;
             let mut buffer = vec![0_u8; std::cmp::min(self.size, BLOCK_SIZE as u64) as usize];
 
             f.reader.read_exact(&mut buffer[..])?;
-            let crc = crc16::checksum_usb(&buffer[..]);
-            self.partialcrc = Some(crc);
+            let crc = crc::Crc::<u16>::new(&crc::CRC_16_USB).checksum(&buffer[..]);
+            self.partialcrc = TriOption::Definite(crc);
             if self.size <= BLOCK_SIZE as u64 {
-                self.fullcrc = Some(crc);
+                self.fullcrc = TriOption::Definite(crc);
             }
             Ok(crc)
         }
     }
 
     pub fn fullcrc(&mut self) -> io::Result<u16> {
-        if let Some(crc) = self.fullcrc {
+        if let TriOption::Definite(crc) = self.fullcrc {
             Ok(crc)
         } else {
             let filename = self
@@ -72,14 +76,13 @@ impl<'a> FdupesGroup<'a> {
                 .get(0)
                 .ok_or_else(|| std::io::Error::new(ErrorKind::Other, "No files in group"))?;
             let mut f = self.comparator.open(filename.to_str().unwrap())?;
-            //let f = File::open(filename)?;
-            //let mut reader = BufReader::new(f);
-            let mut digest = crc16::Digest::new(crc16::X25);
+            let digest = crc::Crc::<u16>::new(&crc::CRC_16_IBM_SDLC);
+            let mut digest = digest.digest();
 
             loop {
                 let length = {
                     let buffer = f.reader.fill_buf()?;
-                    digest.write(buffer);
+                    digest.update(buffer);
                     buffer.len()
                 };
                 if length == 0 {
@@ -88,8 +91,8 @@ impl<'a> FdupesGroup<'a> {
                 f.reader.consume(length);
             }
 
-            let crc = digest.sum16();
-            self.fullcrc = Some(crc);
+            let crc = digest.finalize();
+            self.fullcrc = TriOption::Definite(crc);
             Ok(crc)
         }
     }
@@ -105,7 +108,6 @@ impl<'a> FdupesGroup<'a> {
         };
         self.comparator.open(filename)
         .map(|v| {v.reader})
-        //self.comparator.open(self.filenames.get(0).unwrap().to_str().unwrap()).unwrap().reader
     }
 }
 
@@ -121,10 +123,6 @@ impl<'a> PartialEq<Self> for FdupesGroup<'a> {
                 return false
             },
         };
-        //let mut reader_a = match File::open(self.filenames.get(0).unwrap()) {
-        //    Ok(f) => BufReader::new(f),
-        //    _ => return false,
-        //};
         let mut reader_b = match other.open() {
             Ok(reader) => reader,
             Err(e) => {
@@ -132,10 +130,6 @@ impl<'a> PartialEq<Self> for FdupesGroup<'a> {
                 return false
             }
         };
-        // let mut reader_b = match File::open(other.filenames.get(0).unwrap()) {
-        //     Ok(f) => BufReader::new(f),
-        //     _ => return false,
-        // };
 
         loop {
             let buf_a = match reader_a.fill_buf() {
@@ -165,6 +159,12 @@ impl<'a> PartialEq<Self> for FdupesGroup<'a> {
             reader_a.consume(length_a);
             reader_b.consume(length_b);
         }
+    }
+}
+
+impl Drop for FdupesGroup<'_> {
+    fn drop(&mut self) {
+        trace!(self = debug(self), "drop");
     }
 }
 
