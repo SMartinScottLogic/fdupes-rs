@@ -4,10 +4,11 @@ use std::sync::Arc;
 use std::{collections::BTreeMap, sync::mpsc::Sender};
 
 use bool_ext::BoolExt;
-use tracing::{debug, info, trace};
+use tracing::{debug, info, trace, error};
 use walkdir::WalkDir;
+use itertools::Itertools;
 
-use crate::{Config, DupeMessage};
+use crate::{Config, DbMessage, DupeMessage};
 
 mod fdupesgroup;
 pub(crate) mod group_comparator;
@@ -17,6 +18,7 @@ use group_comparator::GroupComparator;
 
 pub struct DupeScanner {
     tx: Sender<DupeMessage>,
+    db_connection: sqlite::Connection,
     config: Arc<Config>,
     group_comparators: BTreeMap<String, Box<dyn GroupComparator>>,
 }
@@ -24,9 +26,13 @@ pub struct DupeScanner {
 impl DupeScanner {
     pub fn new(
         tx: Sender<DupeMessage>,
+        db_connection: sqlite::Connection,
         config: Arc<Config>,
         group_comparators: Vec<Box<dyn GroupComparator>>,
     ) -> Self {
+        info!("setup db");
+        let query = "CREATE TABLE IF NOT EXISTS files (path TEXT, size INTEGER, PRIMARY KEY(path ASC));";
+        db_connection.execute(query).unwrap();
         info!("group_comparators: {group_comparators:?}");
         let group_comparators =
             group_comparators
@@ -44,6 +50,7 @@ impl DupeScanner {
                 });
         Self {
             tx,
+            db_connection,
             config,
             group_comparators,
         }
@@ -73,7 +80,43 @@ impl DupeScanner {
         Ok(())
     }
 
+    fn persist(&self, path: &Path, size: u64) {
+        let statement = "INSERT INTO files VALUES (:path, :size)";
+        match  self.db_connection.prepare(statement) {
+            Ok(mut statement) => {
+        statement.bind_iter::<_, (_, sqlite::Value)>([
+            (":path", path.to_str().unwrap().into()),
+            (":size", (size as i64).into())
+        ]).unwrap();
+        for row in statement.into_iter() {
+            error!(row = debug(row), "statement result");
+        }
+        }, Err(e) => error!(error = debug(e), "failed to prepare statement from '{statement}'")
+        }
+    }
+
+    fn persist_batch(&self, batch: &Vec<(u64, PathBuf)>) {
+        let mut statement = "INSERT INTO files VALUES ".to_string();
+        statement += &"(?, ?),".repeat(batch.len());
+        statement.pop();
+        debug!(statement, "batch sql");
+        match self.db_connection.prepare(&statement) {
+            Ok(mut statement) => {
+                for (idx, (size, path)) in batch.iter().enumerate() {
+                    debug!(size, path = debug(path), "parameter set {idx}");
+                    statement.bind((1 + 2 * idx, std::convert::Into::<sqlite::Value>::into(path.to_str().unwrap())));
+                    statement.bind((2 + 2 * idx, std::convert::Into::<sqlite::Value>::into(*size as i64)));
+                }
+                for row in statement.into_iter() {
+                    debug!(row = debug(row), "statement result");
+                }
+            },
+            Err(e) => error!(error = debug(e), "failed to prepare statement from '{statement}'")
+        }
+    }
+
     fn find_files_root(
+        &self,
         root: String,
         non_recursive: bool,
         min_size: u64,
@@ -104,7 +147,7 @@ impl DupeScanner {
             .roots
             .iter()
             .map(|r| {
-                Self::find_files_root(
+                self.find_files_root(
                     r.to_owned(),
                     self.config.non_recursive,
                     self.config.min_size,
@@ -112,6 +155,12 @@ impl DupeScanner {
             })
             .filter_map(|h| h.join().ok())
             .flatten()
+            .chunks(50)
+            //.inspect(|(size, path)| self.persist(path, *size))
+            .into_iter()
+            .map(|chunk| chunk.collect_vec())
+            .inspect(|batch| self.persist_batch(batch))
+            .flat_map(|batch| batch.into_iter())
             .fold(BTreeMap::new(), |mut acc, (raw_size, path)| {
                 for (comparator_name, comparator) in &self.group_comparators {
                     if raw_size >= self.config.min_size && comparator.can_analyse(&path) {

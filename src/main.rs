@@ -2,8 +2,8 @@ extern crate chrono;
 
 use clap::Parser;
 use fdupes::receiver::DupeGroupReceiver;
-use fdupes::{ExactGroupComparator, JsonGroupComparator};
-use tracing::Level;
+use fdupes::{ExactGroupComparator, JsonGroupComparator, DbMessage};
+use tracing::{Level, debug, info};
 use tracing_subscriber::fmt::format::FmtSpan;
 
 use std::str::FromStr;
@@ -37,14 +37,34 @@ fn setup(rx: Receiver<DupeMessage>, config: &Config) -> Box<dyn DupeGroupReceive
     }
 }
 
+struct DbReceiver {
+    rx: Receiver<DbMessage>,
+}
+impl DbReceiver {
+    fn new(rx: Receiver<DbMessage>, config: &Config) -> Self {
+        Self { rx }
+    }
+
+    fn run(self) {
+        while let Ok(DbMessage { filename, size, partialcrc, fullcrc }) = self.rx.recv() {
+            info!("To write to DB: {} {:?}", size, filename);
+        }
+    }
+}
+
 fn main() {
     let config = Config::parse();
 
     let (tx, rx): (Sender<DupeMessage>, Receiver<DupeMessage>) = mpsc::channel();
 
+    let (file_tx, file_rx) = mpsc::channel();
+
+    let db_connection = sqlite::Connection::open("cache.sqlite").unwrap();
+
     let mut receiver = setup(rx, &config);
     let scanner = DupeScanner::new(
         tx,
+        db_connection,
         Arc::new(config.clone()),
         vec![
             Box::new(ExactGroupComparator::new()),
@@ -52,9 +72,13 @@ fn main() {
         ],
     );
 
+    let db_receiver = DbReceiver::new(file_rx, &config);
+
+    let db_receiver = thread::spawn(move || db_receiver.run());
     let receiver = thread::spawn(move || receiver.run());
     let scanner = thread::spawn(move || scanner.find_groups());
 
     receiver.join().unwrap().unwrap();
     scanner.join().unwrap();
+    db_receiver.join().unwrap();
 }
